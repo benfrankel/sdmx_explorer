@@ -1,0 +1,45 @@
+from rich.logging import RichHandler
+from sdmx.reader.xml.common import to_snake
+from sdmx.reader.xml.v21 import Reader
+from sdmx.model import common
+from sdmx.reader.xml import v21
+
+import logging
+
+
+def init():
+    init_logging()
+    patch()
+
+
+def init_logging():
+    logging.basicConfig(
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[RichHandler()],
+    )
+
+
+def patch():
+    """Monkey patch to fix upstream bugs."""
+    v21._facet = _facet
+
+
+# Workaround for <https://github.com/khaeru/sdmx/issues/250>.
+# Adapted from <https://github.com/khaeru/sdmx/blob/71cdf849b90fb6f6fbc71786b0c1dc6e24c44a61/sdmx/reader/xml/v21.py#L580>.
+@Reader.end("str:EnumerationFormat str:TextFormat")
+def _facet(reader, elem):
+    args = {to_snake(key): val for key, val in elem.items()}
+    tt = args.pop("text_type", "String")
+    try:
+        fvt = common.FacetValueType[f"{tt[0].lower()}{tt[1:]}"]
+    except KeyError:
+        fvt = common.ExtendedFacetValueType[f"{tt[0]}{tt[1:].lower()}"]
+
+    args.pop("is_multi_lingual", None)
+
+    # PATCHED HERE:
+    args.pop("is_multilingual", None)
+
+    ft = common.FacetType(**args)
+    reader.push(elem, common.Facet(type=ft, value_type=fvt))
