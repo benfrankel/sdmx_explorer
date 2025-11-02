@@ -95,7 +95,7 @@ class SdmxClient:
                 try:
                     idx = int(command)
                 except ValueError:
-                    self._print_error(f'Invalid command "{escape(command)}"')
+                    self._print_error(f'Invalid command "{escape(command)}".')
                     return
                 self._select(idx)
 
@@ -143,8 +143,7 @@ class SdmxClient:
         elif self.selected_dimension is None:
             self._list_dimensions()
         else:
-            # TODO: List possible values from codelist.
-            self._print_error("Nothing to list")
+            self._list_codes()
 
     def _list_sources(self):
         table = Table(
@@ -239,8 +238,43 @@ class SdmxClient:
                 self._localize(concept.name),
                 self._localize(concept.description),
             )
-        with self.console.pager(styles=True, links=True):
-            self.console.print(table)
+        self._print_table(table)
+
+    def _list_codes(self):
+        concept = self.selected_dimension.concept_identity
+        codelist = concept.core_representation.enumerated
+        codes = sorted(codelist.items.values())
+
+        table = Table(
+            show_edge=False,
+            show_lines=True,
+        )
+        table.add_column(
+            header="#",
+            style="index",
+            justify="right",
+        )
+        table.add_column(
+            header="Code ID",
+            style="dimension",
+            overflow="fold",
+        )
+        table.add_column(
+            header="Code Name",
+            overflow="fold",
+        )
+        table.add_column(
+            header="Code Description",
+            overflow="fold",
+        )
+        for idx, code in enumerate(codes):
+            table.add_row(
+                str(idx),
+                code.id,
+                self._localize(code.name),
+                self._localize(code.description),
+            )
+        self._print_table(table)
 
     def _select(self, idx):
         if self.client.source is NoSource:
@@ -250,12 +284,12 @@ class SdmxClient:
         elif self.selected_dimension is None:
             self._select_dimension(idx)
         else:
-            self._print_error("Nothing to select")
+            self._print_error("Nothing to select.")
 
     def _select_source(self, idx):
         sources = sdmx.list_sources()
         if not 0 <= idx < len(sources):
-            self._print_error(f'Invalid source index "{idx}"')
+            self._print_error(f'Invalid source index "{idx}".')
             return
         self.client.source = sdmx.get_source(sources[idx])
         if self.verbose:
@@ -269,7 +303,7 @@ class SdmxClient:
             return
 
         if not 0 <= idx < len(self.dataflows):
-            self._print_error(f'Invalid dataflow index "{idx}"')
+            self._print_error(f'Invalid dataflow index "{idx}".')
             return
         self.selected_dataflow = sorted(self.dataflows.values())[idx]
         if self.verbose:
@@ -283,7 +317,7 @@ class SdmxClient:
             return
 
         if not 0 <= idx < len(self.dimensions):
-            self._print_error(f'Invalid dimension index "{idx}"')
+            self._print_error(f'Invalid dimension index "{idx}".')
             return
         self.selected_dimension = self.dimensions[idx]
         if self.verbose:
@@ -295,7 +329,7 @@ class SdmxClient:
     def _populate_dataflows(self):
         if not self.client.source.supports["dataflow"]:
             self._print_error(
-                f"The selected source ({self.client.source.id}) does not support listing dataflows",
+                f"[source]{self.client.source.id}[/] does not support listing dataflows.",
             )
             return False
 
@@ -307,7 +341,7 @@ class SdmxClient:
                 self.console.print("Request canceled", style="info")
                 return False
             except requests.exceptions.ConnectionError as e:
-                self._print_error(f"Connection error: {e}")
+                self._print_error(f"Connection error: {e}.")
                 return False
             self.dataflows = msg.dataflow
 
@@ -316,7 +350,7 @@ class SdmxClient:
     def _populate_dimensions(self):
         if not self.client.source.supports["datastructure"]:
             self._print_error(
-                f"The selected source ({self.client.source.id}) does not support listing dimensions",
+                f"[source]{self.client.source.id}[/] does not support listing dimensions",
             )
             return False
 
@@ -330,7 +364,7 @@ class SdmxClient:
                 self.console.print("Request canceled", style="info")
                 return False
             except requests.exceptions.ConnectionError as e:
-                self._print_error(f"Connection error: {e}")
+                self._print_error(f"Connection error: {e}.")
                 return False
             dsd = msg.structure[self.selected_dataflow.structure.id]
             self.dimensions = dsd.dimensions.components
@@ -338,7 +372,7 @@ class SdmxClient:
         return True
 
     def _print_error(self, msg):
-        self.console.print(f"ERROR: {msg}", style="error")
+        self.console.print(f"[error]Error:[/] {msg}")
 
     def _print_table(self, table):
         if table.row_count <= self.max_unpaged_rows:
@@ -347,8 +381,8 @@ class SdmxClient:
             with self.console.pager(styles=True, links=True):
                 self.console.print(table)
 
-    def _localize(self, istr):
-        return istr.localizations.get(self.locale) or istr.localized_default()
+    def _localize(self, s):
+        return s.localized_default(self.locale)
 
 
 def _normalize(s):
