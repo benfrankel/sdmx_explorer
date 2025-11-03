@@ -1,3 +1,4 @@
+import requests_cache
 from rich.logging import RichHandler
 from sdmx.reader.xml.common import to_snake
 from sdmx.reader.xml.v21 import Reader
@@ -9,6 +10,7 @@ import logging
 
 def init():
     init_logging()
+    init_cache()
     patch()
 
 
@@ -18,6 +20,10 @@ def init_logging():
         datefmt="[%X]",
         handlers=[RichHandler()],
     )
+
+
+def init_cache():
+    requests_cache.install_cache()
 
 
 def patch():

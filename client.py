@@ -1,5 +1,6 @@
 import pandas as pd
 import requests
+import requests_cache
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
@@ -8,6 +9,7 @@ import sdmx
 from sdmx.source import NoSource
 from sdmx.model import TimeDimension
 
+from datetime import timedelta
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,7 +18,7 @@ logger = logging.getLogger(__name__)
 class SdmxClient:
     def __init__(self):
         # SDMX context:
-        self.client = sdmx.Client()
+        self.client = sdmx.Client(backend="sqlite", expire_after=timedelta(days=1))
         self.selected_dataflow = None
         self.selected_dimension = None
         self.selected_codes = dict()
