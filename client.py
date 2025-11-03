@@ -56,17 +56,15 @@ class SdmxClient:
         )
 
     def _prompt(self):
-        prefix = "[prompt]"
+        path = []
         if self.client.source is not NoSource:
-            path = [f"[source]{escape(self.client.source.id)}[/]"]
-            if self.selected_dataflow is not None:
-                path.append(f"[dataflow]{escape(self.selected_dataflow.id)}[/]")
-                if self.selected_dimension is not None:
-                    path.append(f"[dimension]{escape(self.selected_dimension.id)}[/]")
-            prefix += "/".join(path)
+            path = [f"[bold][source]{escape(self.client.source.id)}[/][/]"]
+        if self.selected_dataflow is not None:
+            path.append(f"[bold][dataflow]{escape(self.selected_dataflow.id)}[/][/]")
+        if self.selected_dimension is not None:
+            path.append(f"[bold][dimension]{escape(self.selected_dimension.id)}[/][/]")
 
-        prefix += "$[/] "
-
+        prefix = f"{"/".join(path)}> "
         try:
             return self.console.input(prefix)
         except EOFError:
@@ -106,13 +104,14 @@ class SdmxClient:
     def _toggle_verbose(self):
         self.verbose = not self.verbose
         level = logging.INFO if self.verbose else logging.WARN
-        logging.getLogger(__name__).setLevel(level)
+        logger.setLevel(level)
         logging.getLogger("sdmx").setLevel(level)
         self.console.print(f"Verbose: [bold]{self.verbose}[/]", style="info")
 
     def _clear_cache(self):
         self.dataflows = None
         self.dimensions = None
+        self.client.clear_cache()
         self.console.print("Cache cleared", style="info")
 
     def _exit(self):
@@ -241,8 +240,9 @@ class SdmxClient:
         self._print_table(table)
 
     def _list_codes(self):
-        concept = self.selected_dimension.concept_identity
-        codelist = concept.core_representation.enumerated
+        dim = self.selected_dimension
+        rep = dim.local_representation or dim.concept_identity.core_representation
+        codelist = rep.enumerated
         codes = sorted(codelist.items.values())
 
         table = Table(
@@ -335,13 +335,13 @@ class SdmxClient:
 
         if self.dataflows is None:
             try:
-                with self.console.status("Requesting dataflows..."):
-                    msg = self.client.dataflow()
+                with self.console.status("Fetching dataflows..."):
+                    msg = self.client.dataflow(use_cache=True)
             except KeyboardInterrupt:
                 self.console.print("Request canceled", style="info")
                 return False
-            except requests.exceptions.ConnectionError as e:
-                self._print_error(f"Connection error: {e}.")
+            except _ as e:
+                self._print_error(f"Request failed: {e}.")
                 return False
             self.dataflows = msg.dataflow
 
@@ -355,17 +355,29 @@ class SdmxClient:
             return False
 
         if self.dimensions is None:
-            try:
-                with self.console.status("Requesting dimensions..."):
-                    msg = self.client.datastructure(
-                        resource=self.selected_dataflow.structure,
-                    )
-            except KeyboardInterrupt:
-                self.console.print("Request canceled", style="info")
-                return False
-            except requests.exceptions.ConnectionError as e:
-                self._print_error(f"Connection error: {e}.")
-                return False
+            # TODO: Workaround for <https://github.com/khaeru/sdmx/issues/256>.
+            req = self.client.datastructure(
+                resource=self.selected_dataflow.structure,
+                references="children",
+                dry_run=True,
+            )
+            if req.url in self.client.cache:
+                msg = self.client.cache[req.url]
+            else:
+                try:
+                    with self.console.status("Fetching dimensions..."):
+                        msg = self.client.datastructure(
+                            resource=self.selected_dataflow.structure,
+                            references="children",
+                        )
+                except KeyboardInterrupt:
+                    self.console.print("Request canceled", style="info")
+                    return False
+                except _ as e:
+                    self._print_error(f"Request failed: {e}.")
+                    return False
+                self.client.cache[req.url] = msg
+
             dsd = msg.structure[self.selected_dataflow.structure.id]
             self.dimensions = dsd.dimensions.components
 
