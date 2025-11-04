@@ -12,6 +12,7 @@ from sdmx.model import TimeDimension
 from datetime import timedelta
 import logging
 import readline
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +48,14 @@ class SdmxClient:
                 self._show_commands()
                 command = self._prompt()
                 self._dispatch(command)
-                self.console.print()
             except KeyboardInterrupt:
-                self._print_info("Canceled.\n")
+                self._print_info("Interrupted")
             except Exception as err:
-                self._print_error(repr(err))
+                if self.verbose:
+                    logger.exception("Exception raised:")
+                else:
+                    self._print_error(f"{err!r}")
+            self.console.print()
 
     # TODO: Maybe this should do the same thing as `self._help()`.
     def _welcome(self):
@@ -65,7 +69,11 @@ class SdmxClient:
 
     def _prompt(self):
         key = []
-        for dim in self._fetch_dimensions() or []:
+        try:
+            dimensions = self._fetch_dimensions(quiet=True) or []
+        except Exception:
+            dimensions = []
+        for dim in dimensions:
             dim_codes = self.selected_codes.setdefault(dim.id, set())
             if dim_codes:
                 s = "+".join(
@@ -137,17 +145,18 @@ class SdmxClient:
     def _help(self):
         pass
 
-    def _toggle_verbose(self):
+    def _toggle_verbose(self, quiet=False):
         self.verbose = not self.verbose
         level = logging.INFO if self.verbose else logging.WARN
         logger.setLevel(level)
         logging.getLogger("sdmx").setLevel(level)
-        self._print_info(f"Verbose: [b]{self.verbose}[/].")
+        if not quiet:
+            self._print_info(f"Verbose: [b]{self.verbose}[/]")
 
     def _clear_cache(self):
         self.client.clear_cache()
         requests_cache.clear()
-        self._print_info("Cache cleared.")
+        self._print_info("Cache cleared")
 
     def _exit(self):
         self.client = None
@@ -163,9 +172,85 @@ class SdmxClient:
         else:
             self._exit()
 
-    # TODO: Print info about the selected resource.
     def _show(self):
-        pass
+        if self.client.source is NoSource:
+            self._print_error("Nothing is selected.")
+            return
+
+        # Define table.
+        table = Table(
+            show_edge=False,
+            show_lines=True,
+        )
+        table.add_column(
+            overflow="fold",
+            style="bold",
+        )
+        table.add_column(
+            header="#",
+            style="index",
+            justify="right",
+        )
+        table.add_column(
+            header="ID",
+            overflow="fold",
+        )
+        table.add_column(
+            header="Name",
+            overflow="fold",
+        )
+        table.add_column(
+            header="Description",
+            overflow="fold",
+        )
+
+        # Populate table.
+        sources = sdmx.list_sources()
+        source_idx = sources.index(self.client.source.id)
+        table.add_row(
+            "Source",
+            str(source_idx),
+            f"[source]{escape(self.client.source.id)}[/]",
+            escape(self.client.source.name),
+            f"[dim][link {self.client.source.url}]{escape(self.client.source.url)}[/][/]",
+        )
+        if self.selected_dataflow is not None:
+            dataflows = sorted(self._fetch_dataflows().values())
+            dataflow_idx = dataflows.index(self.selected_dataflow)
+            table.add_row(
+                "Dataflow",
+                str(dataflow_idx),
+                f"[dataflow]{escape(self.selected_dataflow.id)}[/]",
+                escape(self._localize(self.selected_dataflow.name)),
+                escape(self._localize(self.selected_dataflow.description)),
+            )
+        if self.selected_dimension is not None:
+            dimensions = self._fetch_dimensions()
+            dimension_idx = dimensions.index(self.selected_dimension)
+            concept = self.selected_dimension.concept_identity
+            table.add_row(
+                "Dimension",
+                str(dimension_idx),
+                f"[dimension]{escape(self.selected_dimension.id)}[/]",
+                escape(self._localize(concept.name)),
+                escape(self._localize(concept.description)),
+            )
+            dim_codes = self.selected_codes.setdefault(
+                self.selected_dimension.id, set()
+            )
+            for code in sorted(dim_codes):
+                codes = self._fetch_codes()
+                code_idx = codes.index(code)
+                table.add_row(
+                    "Code",
+                    str(code_idx),
+                    f"[code]{escape(code.id)}[/]",
+                    escape(self._localize(code.name)),
+                    escape(self._localize(code.description)),
+                )
+
+        # Display table.
+        self._print_table(table)
 
     def _list(self):
         if self.client.source is NoSource:
@@ -178,6 +263,7 @@ class SdmxClient:
             self._list_codes()
 
     def _list_sources(self):
+        # Define table.
         table = Table(
             show_edge=False,
             show_lines=True,
@@ -201,6 +287,8 @@ class SdmxClient:
             overflow="fold",
             style="dim",
         )
+
+        # Populate table.
         for idx, source_id in enumerate(sdmx.list_sources()):
             source = sdmx.get_source(source_id)
             table.add_row(
@@ -209,6 +297,8 @@ class SdmxClient:
                 escape(source.name),
                 f"[link {source.url}]{escape(source.url)}[/]",
             )
+
+        # Display table.
         self._print_table(table)
 
     def _list_dataflows(self):
@@ -216,6 +306,7 @@ class SdmxClient:
         if dataflows is None:
             return
 
+        # Define table.
         table = Table(
             show_edge=False,
             show_lines=True,
@@ -238,6 +329,8 @@ class SdmxClient:
             header="Dataflow Description",
             overflow="fold",
         )
+
+        # Populate table.
         for idx, dfd in enumerate(sorted(dataflows.values())):
             table.add_row(
                 str(idx),
@@ -245,6 +338,8 @@ class SdmxClient:
                 escape(self._localize(dfd.name)),
                 escape(self._localize(dfd.description)),
             )
+
+        # Display table.
         self._print_table(table)
 
     def _list_dimensions(self):
@@ -252,6 +347,7 @@ class SdmxClient:
         if dimensions is None:
             return
 
+        # Define table.
         table = Table(
             show_edge=False,
             show_lines=True,
@@ -274,6 +370,8 @@ class SdmxClient:
             header="Concept Description",
             overflow="fold",
         )
+
+        # Populate table.
         for idx, dim in enumerate(dimensions):
             concept = dim.concept_identity
             table.add_row(
@@ -282,6 +380,8 @@ class SdmxClient:
                 escape(self._localize(concept.name)),
                 escape(self._localize(concept.description)),
             )
+
+        # Display table.
         self._print_table(table)
 
     def _list_codes(self):
@@ -289,6 +389,7 @@ class SdmxClient:
         if codes is None:
             return
 
+        # Define table.
         table = Table(
             show_edge=False,
             show_lines=True,
@@ -311,6 +412,8 @@ class SdmxClient:
             header="Code Description",
             overflow="fold",
         )
+
+        # Populate table.
         for idx, code in enumerate(codes):
             table.add_row(
                 str(idx),
@@ -318,6 +421,8 @@ class SdmxClient:
                 escape(self._localize(code.name)),
                 escape(self._localize(code.description)),
             )
+
+        # Display table.
         self._print_table(table)
 
     def _select(self, idx):
@@ -338,10 +443,7 @@ class SdmxClient:
             return
         self.client.source = sdmx.get_source(sources[idx])
 
-        if self.verbose:
-            self._print_info(
-                f"Selected source: [source]{escape(self.client.source.id)}[/]."
-            )
+        self._print_info(f"Selected source: [source]{escape(self.client.source.id)}[/]")
 
     def _select_dataflow(self, idx):
         dataflows = self._fetch_dataflows()
@@ -353,10 +455,12 @@ class SdmxClient:
             return
         self.selected_dataflow = sorted(dataflows.values())[idx]
 
-        if self.verbose:
-            self._print_info(
-                f"Selected dataflow: [dataflow]{escape(self.selected_dataflow.id)}[/]."
-            )
+        # Pre-fetch dimensions so that `self._prompt` can get the number of dimensions.
+        self._fetch_dimensions()
+
+        self._print_info(
+            f"Selected dataflow: [dataflow]{escape(self.selected_dataflow.id)}[/]"
+        )
 
     def _select_dimension(self, idx):
         dimensions = self._fetch_dimensions()
@@ -368,10 +472,9 @@ class SdmxClient:
             return
         self.selected_dimension = dimensions[idx]
 
-        if self.verbose:
-            self._print_info(
-                f"Selected dimension: [dimension]{escape(self.selected_dimension.id)}[/]."
-            )
+        self._print_info(
+            f"Selected dimension: [dimension]{escape(self.selected_dimension.id)}[/]"
+        )
 
     def _select_code(self, idx):
         codes = self._fetch_codes()
@@ -385,14 +488,14 @@ class SdmxClient:
         dim_codes = self.selected_codes.setdefault(self.selected_dimension.id, set())
         dim_codes.symmetric_difference_update(code)
 
-        if self.verbose:
-            self._print_info(
-                f"[dimension]{self.selected_dimension.id}[/]: {["Removed", "Added"][code in dim_codes]} [code]{code}[/].",
-            )
+        self._print_info(
+            f"[dimension]{self.selected_dimension.id}[/]: {["Removed", "Added"][code in dim_codes]} [code]{code}[/]"
+        )
 
-    def _data(self):
+    def _data(self, quiet=False):
         if self.selected_dataflow is None:
-            self._print_error("No dataflow selected.")
+            if not quiet:
+                self._print_error("No dataflow selected.")
             return
 
         key = []
@@ -415,11 +518,12 @@ class SdmxClient:
 
         self.console.print(msg)
 
-    def _fetch_dataflows(self):
+    def _fetch_dataflows(self, quiet=False):
         if not self.client.source.supports["dataflow"]:
-            self._print_error(
-                f"[source]{self.client.source.id}[/] does not support listing dataflows.",
-            )
+            if not quiet:
+                self._print_error(
+                    f"[source]{self.client.source.id}[/] does not support listing dataflows."
+                )
             return
 
         msg = self._get(
@@ -431,11 +535,12 @@ class SdmxClient:
 
         return msg.dataflow
 
-    def _fetch_dimensions(self):
+    def _fetch_dimensions(self, quiet=False):
         if not self.client.source.supports["datastructure"]:
-            self._print_error(
-                f"[source]{self.client.source.id}[/] does not support listing dimensions",
-            )
+            if not quiet:
+                self._print_error(
+                    f"[source]{self.client.source.id}[/] does not support listing dimensions."
+                )
             return
         if self.selected_dataflow is None:
             return
@@ -446,7 +551,7 @@ class SdmxClient:
             resource_type="datastructure",
             resource_id=dsd.id,
             agency_id=dsd.maintainer.id,
-            references="children",
+            params={"references": "children"},
         )
         if msg is None:
             return
@@ -454,11 +559,12 @@ class SdmxClient:
         dsd = msg.structure[dsd.id]
         return [dim for dim in dsd.dimensions.components if type(dim) != TimeDimension]
 
-    def _fetch_codes(self):
+    def _fetch_codes(self, quiet=False):
         if not self.client.source.supports["codelist"]:
-            self._print_error(
-                f"[source]{self.client.source.id}[/] does not support listing codes.",
-            )
+            if not quiet:
+                self._print_error(
+                    f"[source]{self.client.source.id}[/] does not support listing codes."
+                )
             return
         if self.selected_dimension is None:
             return
@@ -467,7 +573,8 @@ class SdmxClient:
         rep = dim.local_representation or dim.concept_identity.core_representation
         codelist = rep.enumerated
         if codelist is None:
-            self._print_error(f"No codelist for [dimension]{dim.id}[/] dimension.")
+            if not quiet:
+                self._print_error(f"No codelist for [dimension]{dim.id}[/] dimension.")
             return
 
         msg = self._get(
@@ -482,12 +589,18 @@ class SdmxClient:
         return sorted(msg.codelist[codelist.id].items.values())
 
     def _get(self, target, **kwargs):
-        req = self.client.get(dry_run=True, **kwargs)
+        # TODO: Open an issue for `dry_run=True` still logging. This is a workaround to get the URL without logging.
+        if self.verbose:
+            self._toggle_verbose(quiet=True)
+            req = self.client.get(dry_run=True, **kwargs)
+            self._toggle_verbose(quiet=True)
+        else:
+            req = self.client.get(dry_run=True, **kwargs)
         if req.url in self.client.cache:
             return self.client.cache[req.url]
 
         with self.console.status(
-            f"Fetching {target}: [dim][link {req.url}]{escape(req.url)}[/][/]",
+            f"Fetching {target}: [dim][link {req.url}]{escape(req.url)}[/][/]"
         ):
             msg = self.client.get(use_cache=True, **kwargs)
 

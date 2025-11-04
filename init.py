@@ -16,11 +16,14 @@ def init():
 
 
 def init_logging():
-    logging.basicConfig(
-        format="%(message)s",
-        datefmt="[%X]",
-        handlers=[RichHandler()],
+    logger = logging.getLogger()
+    logger.handlers = []
+    handler = RichHandler(
+        show_time=False,
+        show_level=False,
+        rich_tracebacks=True,
     )
+    logger.addHandler(handler)
 
 
 def init_cache():
