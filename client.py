@@ -11,6 +11,7 @@ from sdmx.model import TimeDimension
 
 from datetime import timedelta
 import logging
+import readline
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +43,15 @@ class SdmxClient:
     def repl(self):
         self._welcome()
         while self.client is not None:
-            self._show_commands()
-            command = self._prompt()
-            self._dispatch(command)
-            self.console.print()
+            try:
+                self._show_commands()
+                command = self._prompt()
+                self._dispatch(command)
+                self.console.print()
+            except KeyboardInterrupt:
+                self._print_info("Canceled.\n")
+            except Exception as err:
+                self._print_error(repr(err))
 
     # TODO: Maybe this should do the same thing as `self._help()`.
     def _welcome(self):
@@ -53,7 +59,7 @@ class SdmxClient:
 
     def _show_commands(self):
         self.console.print(
-            "(H)elp, (E)xit, (B)ack, (S)how, (L)ist, (#) Select",
+            "Commands: (H)elp, (E)xit, (B)ack, (S)how, (L)ist, (#) Select",
             style="help",
         )
 
@@ -92,14 +98,18 @@ class SdmxClient:
         try:
             return self.console.input(prefix)
         except EOFError:
-            self.console.print()
+            if self.client.source is not NoSource:
+                self.console.print()
             return "back"
-        except KeyboardInterrupt:
-            return "exit"
+        except BaseException as err:
+            self.console.print()
+            raise err
 
     def _dispatch(self, command):
         match _normalize(command):
-            case "help" | "h" | "?" | "":
+            case "":
+                pass
+            case "help" | "h" | "?":
                 self._help()
             case "verbose" | "v":
                 self._toggle_verbose()
@@ -186,9 +196,19 @@ class SdmxClient:
             header="Source Name",
             overflow="fold",
         )
-        for idx, id in enumerate(sdmx.list_sources()):
-            source = sdmx.get_source(id)
-            table.add_row(str(idx), id, source.name)
+        table.add_column(
+            header="Source URL",
+            overflow="fold",
+            style="dim",
+        )
+        for idx, source_id in enumerate(sdmx.list_sources()):
+            source = sdmx.get_source(source_id)
+            table.add_row(
+                str(idx),
+                escape(source_id),
+                escape(source.name),
+                f"[link {source.url}]{escape(source.url)}[/]",
+            )
         self._print_table(table)
 
     def _list_dataflows(self):
@@ -221,9 +241,9 @@ class SdmxClient:
         for idx, dfd in enumerate(sorted(dataflows.values())):
             table.add_row(
                 str(idx),
-                dfd.id,
-                self._localize(dfd.name),
-                self._localize(dfd.description),
+                escape(dfd.id),
+                escape(self._localize(dfd.name)),
+                escape(self._localize(dfd.description)),
             )
         self._print_table(table)
 
@@ -258,9 +278,9 @@ class SdmxClient:
             concept = dim.concept_identity
             table.add_row(
                 str(idx),
-                dim.id,
-                self._localize(concept.name),
-                self._localize(concept.description),
+                escape(dim.id),
+                escape(self._localize(concept.name)),
+                escape(self._localize(concept.description)),
             )
         self._print_table(table)
 
@@ -294,9 +314,9 @@ class SdmxClient:
         for idx, code in enumerate(codes):
             table.add_row(
                 str(idx),
-                code.id,
-                self._localize(code.name),
-                self._localize(code.description),
+                escape(code.id),
+                escape(self._localize(code.name)),
+                escape(self._localize(code.description)),
             )
         self._print_table(table)
 
@@ -467,16 +487,9 @@ class SdmxClient:
             return self.client.cache[req.url]
 
         with self.console.status(
-            f"Fetching {target}: [dim][link {req.url}]{req.url}[/][/]"
+            f"Fetching {target}: [dim][link {req.url}]{escape(req.url)}[/][/]",
         ):
-            try:
-                msg = self.client.get(use_cache=True, **kwargs)
-            except KeyboardInterrupt:
-                self._print_info("Request canceled.")
-                return
-            except Exception as err:
-                self._print_error(f"Request failed: {err!r}.")
-                return
+            msg = self.client.get(use_cache=True, **kwargs)
 
         # TODO: Workaround for <https://github.com/khaeru/sdmx/issues/256>.
         self.client.cache[req.url] = msg

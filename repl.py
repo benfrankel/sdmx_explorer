@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
 
-import client
 import init
 
+init.init()
 
-def main():
-    init.init()
-    client.SdmxClient().repl()
+import client
 
-
-if __name__ == "__main__":
-    main()
+client.SdmxClient().repl()

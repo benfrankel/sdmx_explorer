@@ -1,4 +1,5 @@
 import requests_cache
+import rich.console
 from rich.logging import RichHandler
 from sdmx.reader.xml.common import to_snake
 from sdmx.reader.xml.v21 import Reader
@@ -29,6 +30,7 @@ def init_cache():
 def patch():
     """Monkey patch to fix upstream bugs."""
     v21._facet = _facet
+    rich.console.Console = ConsoleWithInputBackspaceFixed
 
 
 # Workaround for <https://github.com/khaeru/sdmx/issues/250>.
@@ -49,3 +51,33 @@ def _facet(reader, elem):
 
     ft = common.FacetType(**args)
     reader.push(elem, common.Facet(type=ft, value_type=fvt))
+
+
+# Workaround for <https://github.com/Textualize/rich/issues/2293>.
+class ConsoleWithInputBackspaceFixed(rich.console.Console):
+    def input(
+        self,
+        prompt="",
+        *,
+        markup: bool = True,
+        emoji: bool = True,
+        password: bool = False,
+        stream=None,
+    ) -> str:
+        prompt_str = ""
+        if prompt:
+            with self.capture() as capture:
+                self.print(prompt, markup=markup, emoji=emoji, end="")
+            prompt_str = capture.get()
+        if self.legacy_windows:
+            self.file.write(prompt_str)
+            prompt_str = ""
+        if password:
+            result = getpass(prompt_str, stream=stream)
+        else:
+            if stream:
+                self.file.write(prompt_str)
+                result = stream.readline()
+            else:
+                result = input(prompt_str)
+        return result
