@@ -31,7 +31,7 @@ Note that in order to construct a valid key for a dataflow, you must at least kn
 
 ## Setup
 
-Install Python 3.13.7 (or a compatible version) and Pip.
+Install Python 3.13.7 (or a compatible version), Pip, and SQLite.
 Then, in this directory, run the following commands:
 
 ```sh
