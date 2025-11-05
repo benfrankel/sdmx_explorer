@@ -1,18 +1,12 @@
 #!/usr/bin/env python3
 
-import client2
 import init
+
+init.init()
 
 
 # TODO
 def main():
-    init.init()
-    imf = client2.ImfClient()
-    data = imf.download()
-    save(data)
-
-
-def save(data):
     pass
 
 
