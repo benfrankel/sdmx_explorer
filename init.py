@@ -17,13 +17,7 @@ def init():
 
 def init_logging():
     logger = logging.getLogger()
-    logger.handlers = []
-    handler = RichHandler(
-        show_time=False,
-        show_level=False,
-        rich_tracebacks=True,
-    )
-    logger.addHandler(handler)
+    logger.handlers = [RichHandler(rich_tracebacks=True)]
 
 
 def init_cache():
