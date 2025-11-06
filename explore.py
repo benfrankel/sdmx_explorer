@@ -18,7 +18,12 @@ from sdmx.model import TimeDimension
 
 from datetime import timedelta
 import logging
-import readline
+
+# `readline` is not available on Windows.
+try:
+    import readline
+except ImportError:
+    pass
 
 logger = logging.getLogger(__name__)
 
