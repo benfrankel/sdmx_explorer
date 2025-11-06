@@ -734,8 +734,17 @@ class SdmxExplorer:
         if self.selected_dataflow is not None:
             commands.append("data")
         commands = ", ".join(commands)
+        
+        if self.client.source is NoSource:
+            child = "source"
+        elif self.selected_dataflow is None:
+            child = "dataflow"
+        elif self.selected_dimension is None:
+            child = "dimension"
+        else:
+            child = "code"
 
-        self.console.print(f"Commands: {commands}", style="help")
+        self.console.print(f"Commands: {commands} (select a {child} by entering its index or ID)", style="help")
 
     def _print_error(self, msg):
         self.console.print(f"[error]Error:[/] {msg}", highlight=True)
