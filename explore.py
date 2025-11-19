@@ -17,6 +17,7 @@ from sdmx.source import NoSource
 from sdmx.model import TimeDimension
 
 from datetime import timedelta
+from inspect import cleandoc
 import logging
 
 # `readline` is not available on Windows.
@@ -119,6 +120,8 @@ class SdmxExplorer:
                 pass
             case "help" | "h" | "?":
                 self._print_help()
+            case "select" | "s":
+                self._print_select_help()
             case "verbose" | "v":
                 self._toggle_verbose()
             case "clear" | "c":
@@ -145,7 +148,7 @@ class SdmxExplorer:
         self.verbose = not self.verbose
         level = logging.INFO if self.verbose else logging.WARN
         logger.setLevel(level)
-        logging.getLogger("sdmx").setLevel(level)
+        sdmx.log.setLevel(level)
         if not quiet:
             self.console.print(f"Verbose: [bold]{self.verbose}[/]", highlight=True)
 
@@ -671,9 +674,19 @@ class SdmxExplorer:
 
     def _print_welcome(self):
         self.console.print("SDMX Explorer", style="bold purple")
-
+    
+    def _child_resource_str(self):
+        if self.client.source is NoSource:
+            return "source", "sources"
+        elif self.selected_dataflow is None:
+            return "dataflow", "dataflows"
+        elif self.selected_dimension is None:
+            return "dimension", "dimensions"
+        else:
+            return "code", "codes"
+    
     def _print_help(self):
-        self._print_welcome()
+        child, children = self._child_resource_str()
 
         # Define table.
         table = Table(
@@ -697,6 +710,10 @@ class SdmxExplorer:
             "Show this help message [dim](aliases: ?)[/]",
         )
         table.add_row(
+            "select, s",
+            f"Explain how to select a {child}",
+        )
+        table.add_row(
             "verbose, v",
             "Toggle verbose output",
         )
@@ -706,11 +723,11 @@ class SdmxExplorer:
         )
         table.add_row(
             "list, l",
-            "List child resources [dim](aliases: ls)[/]",
+            f"List {children} [dim](aliases: ls)[/]",
         )
         table.add_row(
             "info, i",
-            "Show selection info",
+            "Show information on the current selection",
         )
         table.add_row(
             "data, d",
@@ -726,30 +743,44 @@ class SdmxExplorer:
         )
         table.add_row(
             "<INDEX>, <ID>",
-            "Select a child resource",
+            f"Select a {child}",
         )
 
         # Display table.
         self._print_table(table)
 
+    def _print_select_help(self):
+        child, children = self._child_resource_str()
+        
+        # Define table.
+        table = Table(
+            show_edge=True,
+            show_lines=False,
+        )
+        table.add_column(
+            header=f"Selecting a {child}",
+            style="help",
+            overflow="fold",
+        )
+        
+        # Populate table.
+        table.add_row(cleandoc(f"""
+            First use the [b]list[/] command to list available {children}.
+            To select a {child}, simply enter its index or ID (see the first two columns of the list output).
+        """))
+
+        # Display table.
+        self._print_table(table)
+
     def _print_commands(self):
-        commands = ["help", "quit", "list"]
+        commands = ["help", "quit", "list", "select"]
         if self.client.source is not NoSource:
             commands.extend(["info", "back"])
         if self.selected_dataflow is not None:
             commands.append("data")
         commands = ", ".join(commands)
         
-        if self.client.source is NoSource:
-            child = "source"
-        elif self.selected_dataflow is None:
-            child = "dataflow"
-        elif self.selected_dimension is None:
-            child = "dimension"
-        else:
-            child = "code"
-
-        self.console.print(f"Commands: {commands} (select a {child} by entering its index or ID)", style="help")
+        self.console.print(f"Commands: {commands}", style="help")
 
     def _print_error(self, msg):
         self.console.print(f"[error]Error:[/] {msg}", highlight=True)
