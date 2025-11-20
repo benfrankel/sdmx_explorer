@@ -6,6 +6,7 @@ from sdmx.reader.xml.v21 import Reader
 from sdmx.model import common
 from sdmx.reader.xml import v21
 
+from getpass import getpass
 import logging
 
 log = logging.getLogger()
@@ -22,7 +23,12 @@ def init_logging():
 
 
 def init_cache():
-    requests_cache.install_cache()
+    requests_cache.install_cache(
+        backend=requests_cache.SQLiteCache(
+            db_path=__package__,
+            use_cache_dir=True,
+        ),
+    )
 
 
 def patch():

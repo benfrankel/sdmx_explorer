@@ -2,11 +2,10 @@ from . import init
 
 init.init()
 
-import pandas as pd
-import requests
+from . import queries
+
 import requests_cache
 from rich.console import Console
-from rich.markdown import Markdown
 from rich.markup import escape
 from rich.table import Table
 from rich.theme import Theme
@@ -15,7 +14,6 @@ from sdmx.source import NoSource
 from sdmx.model import TimeDimension
 
 from datetime import timedelta
-from inspect import cleandoc
 import logging
 
 # `readline` is not available on Windows.
@@ -30,12 +28,7 @@ log = logging.getLogger(__name__)
 class SdmxExplorer:
     def __init__(self):
         # SDMX context:
-        self.client = sdmx.Client(
-            backend="sqlite",
-            db_path="sdmx_explorer",
-            use_cache_dir=True,
-            expire_after=timedelta(days=1),
-        )
+        self.client = sdmx.Client(expire_after=timedelta(days=1))
         self.selected_dataflow = None
         self.selected_dimension = None
         self.selected_codes = dict()
@@ -56,10 +49,10 @@ class SdmxExplorer:
         self.console = Console(theme=Theme(theme), highlight=False)
 
     def repl(self):
-        self._print_welcome()
+        self._display_welcome()
         while self.client is not None:
             try:
-                self._print_commands()
+                self._display_commands()
                 command = self._prompt()
                 self._dispatch(command)
             except KeyboardInterrupt:
@@ -72,43 +65,11 @@ class SdmxExplorer:
             self.console.print()
 
     def _prompt(self):
-        key = []
-        try:
-            dimensions = self._get_dimensions(quiet=True) or []
-        except Exception:
-            dimensions = []
-        for dim in dimensions:
-            dim_codes = self.selected_codes.setdefault(dim.id, set())
-            if dim_codes:
-                s = "+".join(
-                    f"[code]{escape(code.id)}[/]" for code in sorted(dim_codes)
-                )
-            else:
-                s = "*"
-            if (
-                self.selected_dimension is not None
-                and self.selected_dimension.id == dim.id
-            ):
-                s = f"[u]{s}[/]"
-            key.append(s)
-        key = ".".join(key)
-        if key:
-            key = f"({key})"
-
-        path = []
-        if self.client.source is not NoSource:
-            path = [f"[source]{escape(self.client.source.id)}[/]"]
-        if self.selected_dataflow is not None:
-            path.append(
-                f"[dataflow]{escape(self.selected_dataflow.id)}[/]{key}",
-            )
-        if self.selected_dimension is not None:
-            path.append(f"[dimension]{escape(self.selected_dimension.id)}[/]")
-        path = "/".join(path)
-
+        path = self._get_selection_path(rich=True, selected_dimension=True)
         prefix = f"{path}> "
+
         try:
-            return self.console.input(prefix)
+            return self.console.input(prefix).strip()
         except EOFError:
             if self.client.source is not NoSource:
                 self.console.print()
@@ -122,9 +83,7 @@ class SdmxExplorer:
             case "":
                 pass
             case "help" | "h" | "?":
-                self._print_help()
-            case "select" | "s":
-                self._print_select_help()
+                self._display_help()
             case "verbose" | "v":
                 self._toggle_verbose()
             case "clear" | "c":
@@ -134,11 +93,13 @@ class SdmxExplorer:
             case "back" | "b":
                 self._back()
             case "info" | "i":
-                self._print_info()
+                self._display_info()
             case "list" | "ls" | "l":
                 self._list()
             case "data" | "d":
                 self._get_data()
+            case "save" | "s":
+                self._save_query()
             case _:
                 try:
                     self._select(command)
@@ -174,7 +135,7 @@ class SdmxExplorer:
         else:
             self._quit()
 
-    def _print_info(self):
+    def _display_info(self):
         if self.client.source is NoSource:
             self._print_error("Nothing is selected.")
             return
@@ -207,6 +168,17 @@ class SdmxExplorer:
         )
 
         # Populate table.
+        url = self._get_selection_url(quiet=True)
+        if url is not None:
+            path = self._get_selection_path(rich=True, selected_dimension=False)
+            table.add_row(
+                "Query",
+                "",
+                path,
+                "Currently selected",
+                f"[dim][link {url}]{escape(url)}[/][/]",
+            )
+
         sources = sdmx.list_sources()
         source_idx = sources.index(self.client.source.id)
         table.add_row(
@@ -216,6 +188,7 @@ class SdmxExplorer:
             escape(self.client.source.name),
             f"[dim][link {self.client.source.url}]{escape(self.client.source.url)}[/][/]",
         )
+
         if self.selected_dataflow is not None:
             dataflows = sorted(self._get_dataflows().values())
             dataflow_idx = dataflows.index(self.selected_dataflow)
@@ -226,7 +199,7 @@ class SdmxExplorer:
                 escape(self._localize(self.selected_dataflow.name)),
                 escape(self._localize(self.selected_dataflow.description)),
             )
-        if self.selected_dataflow is not None:
+
             dimensions = self._get_dimensions()
             for dimension_id, dimension_codes in self.selected_codes.items():
                 if not dimension_codes and (
@@ -246,7 +219,7 @@ class SdmxExplorer:
                     escape(self._localize(concept.name)),
                     escape(self._localize(concept.description)),
                 )
-                
+
                 if not dimension_codes:
                     continue
 
@@ -263,10 +236,6 @@ class SdmxExplorer:
 
         # Display table.
         self._print_table(table)
-        
-        url = self._get_url(quiet=True)
-        if url is not None:
-            self.console.print(f"[b]Query:[/] {url}")
 
     def _list(self):
         if self.client.source is NoSource:
@@ -599,7 +568,9 @@ class SdmxExplorer:
             return
 
         dsd = msg.structure[dsd.id]
-        return [dim for dim in dsd.dimensions.components if type(dim) != TimeDimension]
+        return [
+            dim for dim in dsd.dimensions.components if type(dim) is not TimeDimension
+        ]
 
     def _get_codes(self, dimension=None, quiet=False):
         if not self.client.source.supports["codelist"]:
@@ -635,8 +606,8 @@ class SdmxExplorer:
             return
 
         return sorted(msg.codelist[codelist.id].items.values())
-    
-    def _get_key(self, quiet=False):
+
+    def _get_selection_key(self, rich=False, selected_dimension=False, quiet=False):
         if self.selected_dataflow is None:
             if not quiet:
                 self._print_error("No dataflow selected.")
@@ -646,15 +617,57 @@ class SdmxExplorer:
         for dim in self._get_dimensions() or []:
             dim_codes = self.selected_codes.setdefault(dim.id, set())
             if dim_codes:
-                key.append("+".join(code.id for code in sorted(dim_codes)))
+                s = "+".join(
+                    f"[code]{escape(code.id)}[/]" if rich else code.id
+                    for code in sorted(dim_codes)
+                )
             else:
-                key.append("*")
+                s = "*"
+
+            # Underline the selected dimension's codes.
+            if (
+                rich
+                and selected_dimension
+                and self.selected_dimension is not None
+                and self.selected_dimension.id == dim.id
+            ):
+                s = f"[u]{s}[/]"
+            key.append(s)
         key = ".".join(key)
 
         return key
-    
-    def _get_url(self, quiet=False):
-        key = self._get_key(quiet=quiet)
+
+    def _get_selection_path(self, rich=False, selected_dimension=False):
+        path = []
+        if self.client.source is not NoSource:
+            path = [
+                f"[source]{escape(self.client.source.id)}[/]"
+                if rich
+                else self.client.source.id
+            ]
+        if self.selected_dataflow is not None:
+            key = self._get_selection_key(
+                rich=rich,
+                selected_dimension=selected_dimension,
+                quiet=True,
+            )
+            path.append(
+                f"[dataflow]{escape(self.selected_dataflow.id)}[/]({key})"
+                if rich
+                else f"{self.selected_dataflow.id}({key})"
+            )
+        if selected_dimension and self.selected_dimension is not None:
+            path.append(
+                f"[dimension]{escape(self.selected_dimension.id)}[/]"
+                if rich
+                else self.selected_dimension.id
+            )
+        path = "/".join(path)
+
+        return path
+
+    def _get_selection_url(self, quiet=False):
+        key = self._get_selection_key(quiet=quiet)
         if key is None:
             return
 
@@ -707,7 +720,7 @@ class SdmxExplorer:
             req = self.client.get(**new_kwargs)
         if req.url in self.client.cache:
             return self.client.cache[req.url]
-        
+
         if kwargs.get("dry_run", False):
             return req
 
@@ -720,10 +733,19 @@ class SdmxExplorer:
         self.client.cache[req.url] = msg
         return msg
 
-    def _print_welcome(self):
+    def _save_query(self):
+        url = self._get_selection_url()
+        if url is None:
+            return
+
+        queries.save(url)
+
+        self.console.print(f"Saved query: [b]{url}[/]")
+
+    def _display_welcome(self):
         self.console.print("SDMX Explorer", style="bold purple")
-    
-    def _print_help(self):
+
+    def _display_help(self):
         child, children = self._child_resource_str()
 
         # Define table.
@@ -748,10 +770,6 @@ class SdmxExplorer:
             "Show this help message [dim](aliases: ?)[/]",
         )
         table.add_row(
-            "select, s",
-            f"Explain how to select a {child}",
-        )
-        table.add_row(
             "verbose, v",
             "Toggle verbose output",
         )
@@ -772,6 +790,10 @@ class SdmxExplorer:
             "Download data",
         )
         table.add_row(
+            "save, s",
+            "Save the current query",
+        )
+        table.add_row(
             "back, b",
             "Navigate up",
         )
@@ -787,37 +809,14 @@ class SdmxExplorer:
         # Display table.
         self._print_table(table)
 
-    def _print_select_help(self):
-        child, children = self._child_resource_str()
-        
-        # Define table.
-        table = Table(
-            show_edge=True,
-            show_lines=False,
-        )
-        table.add_column(
-            header=f"Selecting a {child}",
-            style="help",
-            overflow="fold",
-        )
-        
-        # Populate table.
-        table.add_row(cleandoc(f"""
-            First use the [b]list[/] command to list available {children}.
-            To select a {child}, enter its index or ID (the first two columns of the list output).
-        """))
-
-        # Display table.
-        self._print_table(table)
-
-    def _print_commands(self):
-        commands = ["help", "quit", "list", "select"]
+    def _display_commands(self):
+        commands = ["help", "quit", "list"]
         if self.client.source is not NoSource:
             commands.extend(["info", "back"])
         if self.selected_dataflow is not None:
-            commands.append("data")
+            commands.extend(["data", "save"])
         commands = ", ".join(commands)
-        
+
         self.console.print(f"Commands: {commands}", style="help")
 
     def _print_error(self, msg):

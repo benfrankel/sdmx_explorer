@@ -15,3 +15,4 @@ dependencies = [
 
 [project.scripts]
 explore = "sdmx_explorer.explore:main"
+download = "sdmx_explorer.download:main"
