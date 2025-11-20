@@ -1,13 +1,12 @@
 attrs==25.4.0
 cattrs==25.3.0
-certifi==2025.10.5
+certifi==2025.11.12
 charset-normalizer==3.4.4
-elementpath==4.8.0
 idna==3.11
 lxml==6.0.2
 markdown-it-py==4.0.0
 mdurl==0.1.2
-numpy==2.3.4
+numpy==2.3.5
 packaging==25.0
 pandas==2.3.3
 platformdirs==4.5.0

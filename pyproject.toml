@@ -1,0 +1,16 @@
+[project]
+name = "sdmx-explorer"
+version = "0.1.0"
+description = "An interactive SDMX explorer and downloader."
+authors = [{ name = "Ben Frankel", email = "ben.frankel7@gmail.com" }]
+readme = "README.md"
+dependencies = [
+    "pandas >= 2.3.3",
+    "requests >= 2.32.5",
+    "requests-cache >= 1.2.1",
+    "rich >= 14.2.0",
+    "sdmx1 >= 2.23.1",
+]
+
+[project.scripts]
+explore = "sdmx_explorer.explore:main"

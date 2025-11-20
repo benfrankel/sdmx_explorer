@@ -8,6 +8,8 @@ from sdmx.reader.xml import v21
 
 import logging
 
+log = logging.getLogger()
+
 
 def init():
     init_logging()
@@ -16,8 +18,7 @@ def init():
 
 
 def init_logging():
-    logger = logging.getLogger()
-    logger.handlers = [RichHandler(rich_tracebacks=True)]
+    log.handlers = [RichHandler(rich_tracebacks=True)]
 
 
 def init_cache():

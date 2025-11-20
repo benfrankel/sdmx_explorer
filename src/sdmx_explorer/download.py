@@ -1,12 +1,10 @@
-#!/usr/bin/env python3
-
-import init
+from . import init
 
 init.init()
 
 
-# TODO
 def main():
+    # TODO: Download data.
     pass
 
 

@@ -38,13 +38,14 @@ Then, in this directory, run the following commands:
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+pip install -e .
 ```
 
-This sets up a virtual environment and installs the required Python dependencies in that environment.
+This sets up a virtual environment and installs the SDMX explorer in that environment.
 
 ## Usage
 
-In this directory, enter the virtual environment if necessary:
+In this directory, enter the virtual environment if you haven't already:
 
 ```sh
 source .venv/bin/activate
@@ -53,14 +54,14 @@ source .venv/bin/activate
 Now you can launch the SDMX explorer REPL:
 
 ```sh
-./explore.py
+explore
 ```
 
 This will greet you with the following prompt:
 
 ```
 SDMX Explorer
-Commands: help, quit, list (select a source by entering its index or ID)
+Commands: help, quit, list
 > 
 ```
 
@@ -93,7 +94,7 @@ Start by entering `list` to see a list of SDMX sources:
 You can select the `IMF_DATA` source by entering its index (`14`) or its ID (`IMF_DATA`):
 
 ```
-Commands: help, quit, list (select a source by entering its index or ID)
+Commands: help, quit, list
 > 14
 Selected source: IMF_DATA
 ```
@@ -102,7 +103,7 @@ Enter `back` to go back and select a different source.
 With a source selected, enter `list` to see its dataflows:
 
 ```
-Commands: help, quit, list (select a source by entering its index or ID)
+Commands: help, quit, list
 IMF_DATA> list
 ┏━━━━┳━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃  # ┃ Dataflow ID           ┃ Dataflow Name                                                                                ┃ Dataflow Description                                                                         ┃
@@ -129,7 +130,7 @@ IMF_DATA> list
 You can select the `CPI` dataflow by entering its index (`6`) or its ID (`CPI`):
 
 ```
-Commands: help, quit, list, info, back (select a dataflow by entering its index or ID)
+Commands: help, quit, list, info, back
 IMF_DATA> 6
 Selected dataflow: CPI
 ```
@@ -138,7 +139,7 @@ Enter `back` to go back and select a different dataflow.
 With a dataflow selected, enter `list` to see its dimensions:
 
 ```
-Commands: help, quit, list, info, back, data (select a dimension by entering its index or ID)
+Commands: help, quit, list, info, back, data
 IMF_DATA/CPI(*.*.*.*.*)> list
 ┏━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ # ┃ Dimension ID           ┃ Concept Name           ┃ Concept Description                                                                                                                                                ┃
@@ -160,7 +161,7 @@ IMF_DATA/CPI(*.*.*.*.*)> list
 You can select the `COUNTRY` dimension by entering its index (`0`) or its ID (`COUNTRY`):
 
 ```
-Commands: help, quit, list, info, back, data (select a dimension by entering its index or ID)
+Commands: help, quit, list, info, back, data
 IMF_DATA/CPI(*.*.*.*.*)> 0
 Selected dimension: COUNTRY
 ```
@@ -169,7 +170,7 @@ Enter `back` to go back and select a different dimension.
 With a dimension selected, enter `list` to see its valid codes:
 
 ```
-Commands: help, quit, list, info, back, data (select a code by entering its index or ID)
+Commands: help, quit, list, info, back, data
 IMF_DATA/CPI(*.*.*.*.*)/COUNTRY> list
 ┏━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃   # ┃ Code ID ┃ Code Name                                                                  ┃ Code Description                                                                                                            ┃
@@ -193,7 +194,7 @@ IMF_DATA/CPI(*.*.*.*.*)/COUNTRY> list
 You can select the `USA` code by entering its index (`317`) or its ID (`USA`):
 
 ```
-Commands: help, quit, list, info, back, data (select a code by entering its index or ID)
+Commands: help, quit, list, info, back, data
 IMF_DATA/CPI(*.*.*.*.*)/COUNTRY> USA
 Added USA to COUNTRY
 ```
@@ -202,7 +203,7 @@ This adds `USA` to the `COUNTRY` dimension of the key.
 You can always see the current key in the prompt (now the key is `USA.*.*.*.*`):
 
 ```
-Commands: help, quit, list, info, back, data (select a code by entering its index or ID)
+Commands: help, quit, list, info, back, data
 IMF_DATA/CPI(USA.*.*.*.*)/COUNTRY> 
 ```
 
@@ -212,13 +213,13 @@ You can also enter `*` to clear all codes from the currently selected dimension 
 Once you're satisfied with the key, enter `data` to download data using the query you've constructed:
 
 ```
-Commands: help, quit, list, info, back, data (select a code by entering its index or ID)
+Commands: help, quit, list, info, back, data
 IMF_DATA/CPI(USA.*.*.*.*)/COUNTRY> data
 ```
 
 Finally, enter `exit` to exit the REPL when you're done:
 
 ```
-Commands: help, quit, list, info, back, data (select a code by entering its index or ID)
+Commands: help, quit, list, info, back, data
 IMF_DATA/CPI(USA.*.*.*.*)/COUNTRY> exit
 ```

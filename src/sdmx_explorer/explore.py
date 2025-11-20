@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
-
-import init
+from . import init
 
 init.init()
 
@@ -26,7 +24,7 @@ try:
 except ImportError:
     pass
 
-logger = logging.getLogger(__name__)
+log = logging.getLogger(__name__)
 
 
 class SdmxExplorer:
@@ -147,7 +145,7 @@ class SdmxExplorer:
     def _toggle_verbose(self, quiet=False):
         self.verbose = not self.verbose
         level = logging.INFO if self.verbose else logging.WARN
-        logger.setLevel(level)
+        log.setLevel(level)
         sdmx.log.setLevel(level)
         if not quiet:
             self.console.print(f"Verbose: [bold]{self.verbose}[/]", highlight=True)
@@ -843,5 +841,9 @@ class SdmxExplorer:
             return "code", "codes"
 
 
-if __name__ == "__main__":
+def main():
     SdmxExplorer().repl()
+
+
+if __name__ == "__main__":
+    main()
