@@ -131,7 +131,7 @@ class SdmxExplorer:
             case "back" | "b":
                 self._back()
             case "info" | "i":
-                self._info()
+                self._print_info()
             case "list" | "ls" | "l":
                 self._list()
             case "data" | "d":
@@ -171,7 +171,7 @@ class SdmxExplorer:
         else:
             self._quit()
 
-    def _info(self):
+    def _print_info(self):
         if self.client.source is NoSource:
             self._print_error("Nothing is selected.")
             return
@@ -243,6 +243,9 @@ class SdmxExplorer:
                     escape(self._localize(concept.name)),
                     escape(self._localize(concept.description)),
                 )
+                
+                if not dimension_codes:
+                    continue
 
                 codes = self._get_codes(dimension=dimension)
                 for code in sorted(dimension_codes):
@@ -257,6 +260,10 @@ class SdmxExplorer:
 
         # Display table.
         self._print_table(table)
+        
+        url = self._get_url(quiet=True)
+        if url is not None:
+            self.console.print(f"[b]Query:[/] {url}")
 
     def _list(self):
         if self.client.source is NoSource:
@@ -625,6 +632,37 @@ class SdmxExplorer:
             return
 
         return sorted(msg.codelist[codelist.id].items.values())
+    
+    def _get_key(self, quiet=False):
+        if self.selected_dataflow is None:
+            if not quiet:
+                self._print_error("No dataflow selected.")
+            return
+
+        key = []
+        for dim in self._get_dimensions() or []:
+            dim_codes = self.selected_codes.setdefault(dim.id, set())
+            if dim_codes:
+                key.append("+".join(code.id for code in sorted(dim_codes)))
+            else:
+                key.append("*")
+        key = ".".join(key)
+
+        return key
+    
+    def _get_url(self, quiet=False):
+        key = self._get_key(quiet=quiet)
+        if key is None:
+            return
+
+        req = self._get(
+            "data",
+            resource_type="data",
+            resource_id=self.selected_dataflow.id,
+            key=key,
+            dry_run=True,
+        )
+        return req.url
 
     def _get_data(self, quiet=False):
         if self.selected_dataflow is None:
@@ -656,12 +694,19 @@ class SdmxExplorer:
         # TODO: Open an issue for `dry_run=True` still logging. This is a workaround to get the URL without logging.
         if self.verbose:
             self._toggle_verbose(quiet=True)
-            req = self.client.get(dry_run=True, **kwargs)
+            new_kwargs = dict(kwargs)
+            new_kwargs["dry_run"] = True
+            req = self.client.get(**new_kwargs)
             self._toggle_verbose(quiet=True)
         else:
-            req = self.client.get(dry_run=True, **kwargs)
+            new_kwargs = dict(kwargs)
+            new_kwargs["dry_run"] = True
+            req = self.client.get(**new_kwargs)
         if req.url in self.client.cache:
             return self.client.cache[req.url]
+        
+        if kwargs.get("dry_run", False):
+            return req
 
         with self.console.status(
             f"Fetching {target}: [dim][link {req.url}]{escape(req.url)}[/][/]"
@@ -674,16 +719,6 @@ class SdmxExplorer:
 
     def _print_welcome(self):
         self.console.print("SDMX Explorer", style="bold purple")
-    
-    def _child_resource_str(self):
-        if self.client.source is NoSource:
-            return "source", "sources"
-        elif self.selected_dataflow is None:
-            return "dataflow", "dataflows"
-        elif self.selected_dimension is None:
-            return "dimension", "dimensions"
-        else:
-            return "code", "codes"
     
     def _print_help(self):
         child, children = self._child_resource_str()
@@ -766,7 +801,7 @@ class SdmxExplorer:
         # Populate table.
         table.add_row(cleandoc(f"""
             First use the [b]list[/] command to list available {children}.
-            To select a {child}, simply enter its index or ID (see the first two columns of the list output).
+            To select a {child}, enter its index or ID (the first two columns of the list output).
         """))
 
         # Display table.
@@ -796,6 +831,16 @@ class SdmxExplorer:
 
     def _localize(self, s):
         return s.localized_default(self.locale)
+
+    def _child_resource_str(self):
+        if self.client.source is NoSource:
+            return "source", "sources"
+        elif self.selected_dataflow is None:
+            return "dataflow", "dataflows"
+        elif self.selected_dimension is None:
+            return "dimension", "dimensions"
+        else:
+            return "code", "codes"
 
 
 if __name__ == "__main__":
