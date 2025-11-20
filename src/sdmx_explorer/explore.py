@@ -30,7 +30,12 @@ log = logging.getLogger(__name__)
 class SdmxExplorer:
     def __init__(self):
         # SDMX context:
-        self.client = sdmx.Client(backend="sqlite", expire_after=timedelta(days=1))
+        self.client = sdmx.Client(
+            backend="sqlite",
+            db_path="sdmx_explorer",
+            use_cache_dir=True,
+            expire_after=timedelta(days=1),
+        )
         self.selected_dataflow = None
         self.selected_dimension = None
         self.selected_codes = dict()

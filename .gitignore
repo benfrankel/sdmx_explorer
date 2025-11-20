@@ -1,5 +1,5 @@
 __pycache__/
 *.egg-info/
 
-http_cache.sqlite
 queries.txt
+data/
