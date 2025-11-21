@@ -45,35 +45,37 @@ class Query(NamedTuple):
         else:
             return "/".join(self)
 
-    def get(self, client):
+    def download(self, client=None):
+        df = self.data(client=client)
+        if df is not None:
+            self.save_data(df)
+        return df
+
+    def data(self, client=None):
+        if client is None:
+            client = sdmx.Client()
+
         try:
             client.source = sdmx.get_source(self.source)
         except KeyError:
             raise ValueError(f'Source with ID "{self.source}" was not found')
 
-        return client.get(
+        msg = client.get(
             resource_type="data",
             resource_id=self.dataflow,
             key=self.key,
         )
 
-    def excel_path(self):
-        return DATA_PATH / self.source / self.dataflow / f"{self.key}.xlsx"
+        if msg.data[0].series:
+            return sdmx.to_pandas(msg).reset_index()
 
-    def download(self, client):
-        msg = self.get(client)
-
-        path = self.excel_path()
+    def save_data(self, df):
+        path = self._data_path()
         path.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(path, sep="\t", index=False)
 
-        # No matching time series.
-        if not msg.data[0].series:
-            return
-
-        df = sdmx.to_pandas(msg)
-        df.to_excel(path)
-
-        return msg
+    def _data_path(self):
+        return DATA_PATH / self.source / self.dataflow / f"{self.key}.tsv"
 
 
 def load_queries():
