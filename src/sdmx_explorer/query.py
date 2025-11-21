@@ -57,13 +57,13 @@ class Query(NamedTuple):
             key=self.key,
         )
 
-    def data_path(self):
-        return DATA_PATH / self.source / self.dataflow / self.key
+    def excel_path(self):
+        return DATA_PATH / self.source / self.dataflow / f"{self.key}.xlsx"
 
     def download(self, client):
         msg = self.get(client)
 
-        path = self.data_path().with_suffix(".xlsx")
+        path = self.excel_path()
         path.parent.mkdir(parents=True, exist_ok=True)
 
         # No matching time series.

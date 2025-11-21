@@ -1,5 +1,4 @@
 import requests_cache
-from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 import sdmx
