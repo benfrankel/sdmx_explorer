@@ -1,4 +1,3 @@
-import requests_cache
 import rich.console
 from rich.logging import RichHandler
 from sdmx.reader.xml.common import to_snake
@@ -9,26 +8,24 @@ from sdmx.reader.xml import v21
 from getpass import getpass
 import logging
 
+from .display import CONSOLE
+
 log = logging.getLogger()
 
 
 def init():
-    init_logging()
-    init_cache()
     patch()
+    init_logging()
 
 
 def init_logging():
-    log.handlers = [RichHandler(rich_tracebacks=True)]
-
-
-def init_cache():
-    requests_cache.install_cache(
-        backend=requests_cache.SQLiteCache(
-            db_path=__package__,
-            use_cache_dir=True,
+    log.handlers = [
+        RichHandler(
+            console=CONSOLE,
+            rich_tracebacks=True,
+            omit_repeated_times=False,
         ),
-    )
+    ]
 
 
 def patch():

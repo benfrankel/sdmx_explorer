@@ -140,7 +140,7 @@ With a dataflow selected, enter `list` to see its dimensions:
 
 ```
 Commands: help, quit, list, info, back, data
-IMF_DATA/CPI(*.*.*.*.*)> list
+IMF_DATA/CPI/*.*.*.*.*> list
 ┏━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ # ┃ Dimension ID           ┃ Concept Name           ┃ Concept Description                                                                                                                                                ┃
 ┡━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
@@ -162,7 +162,7 @@ You can select the `COUNTRY` dimension by entering its index (`0`) or its ID (`C
 
 ```
 Commands: help, quit, list, info, back, data
-IMF_DATA/CPI(*.*.*.*.*)> 0
+IMF_DATA/CPI/*.*.*.*.*> 0
 Selected dimension: COUNTRY
 ```
 
@@ -171,7 +171,7 @@ With a dimension selected, enter `list` to see its valid codes:
 
 ```
 Commands: help, quit, list, info, back, data
-IMF_DATA/CPI(*.*.*.*.*)/COUNTRY> list
+IMF_DATA/CPI/COUNTRY=*.*.*.*.*> list
 ┏━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃   # ┃ Code ID ┃ Code Name                                                                  ┃ Code Description                                                                                                            ┃
 ┡━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
@@ -195,7 +195,7 @@ You can select the `USA` code by entering its index (`317`) or its ID (`USA`):
 
 ```
 Commands: help, quit, list, info, back, data
-IMF_DATA/CPI(*.*.*.*.*)/COUNTRY> USA
+IMF_DATA/CPI/COUNTRY=*.*.*.*.*> USA
 Added USA to COUNTRY
 ```
 
@@ -204,7 +204,7 @@ You can always see the current key in the prompt (now the key is `USA.*.*.*.*`):
 
 ```
 Commands: help, quit, list, info, back, data
-IMF_DATA/CPI(USA.*.*.*.*)/COUNTRY> 
+IMF_DATA/CPI/COUNTRY=USA.*.*.*.*> 
 ```
 
 You can select another `COUNTRY` code to add it to the key, or select the same code again to remove it from the key.
@@ -214,12 +214,12 @@ Once you're satisfied with the key, enter `data` to download data using the quer
 
 ```
 Commands: help, quit, list, info, back, data
-IMF_DATA/CPI(USA.*.*.*.*)/COUNTRY> data
+IMF_DATA/CPI/COUNTRY=USA.*.*.*.*> data
 ```
 
 Finally, enter `exit` to exit the REPL when you're done:
 
 ```
 Commands: help, quit, list, info, back, data
-IMF_DATA/CPI(USA.*.*.*.*)/COUNTRY> exit
+IMF_DATA/CPI/COUNTRY=USA.*.*.*.*> exit
 ```
