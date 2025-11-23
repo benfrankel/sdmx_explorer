@@ -6,6 +6,7 @@ THEME = Theme(
     {
         "help": "italic purple",
         "error": "bold red",
+        "warning": "bold yellow",
         "index": "bold purple",
         "source": "bold yellow",
         "dataflow": "bold green",

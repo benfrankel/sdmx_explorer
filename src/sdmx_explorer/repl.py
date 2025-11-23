@@ -541,9 +541,9 @@ class Repl:
             resource_type="datastructure",
             resource_id=dsd.id,
             agency_id=dsd.maintainer.id,
-            # TODO: Workaround for <https://github.com/khaeru/sdmx/issues/259>.
-            params={"references": "children"},
+            references="children",
         )
+        print(dsd.id, dsd.maintainer.id)
         if msg is None:
             return
 

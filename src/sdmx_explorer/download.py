@@ -3,15 +3,25 @@ from .init import init
 init()
 
 import pandas as pd
-import sdmx
 
+from . import auth
 from .display import CONSOLE
 from .query import load_queries, DATA_PATH
 
 
 def main():
+    try:
+        download()
+    except KeyboardInterrupt:
+        print("Interrupted")
+
+
+def download():
     console = CONSOLE
-    client = sdmx.Client()
+    client = auth.client()
+
+    # TODO: Actually fix the warning.
+    # sdmx.log.setLevel(100)
 
     dfs = []
     for query in load_queries():
@@ -24,18 +34,16 @@ def main():
                 continue
 
         if df is None:
-            console.print(f"[error]Error:[/] No matching time series for {query_str}")
+            console.print(f"[warning]Warning:[/] No results for {query_str}")
             continue
 
         dfs.append(df)
         console.print(f"Downloaded {len(df)} rows for {query_str}", highlight=True)
 
+    # TODO: Remove the exit().
+    exit()
     if dfs:
-        full = pd.concat(dfs).drop_duplicates()
+        full = pd.concat(dfs, ignore_index=True).drop_duplicates()
         path = DATA_PATH / "full.tsv"
         path.parent.mkdir(parents=True, exist_ok=True)
         full.to_csv(path, sep="\t", index=False)
-
-
-if __name__ == "__main__":
-    main()

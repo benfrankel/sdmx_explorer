@@ -4,6 +4,8 @@ import sdmx
 from pathlib import Path
 from typing import NamedTuple
 
+from . import auth
+
 
 QUERIES_PATH: Path = Path("queries.txt")
 DATA_PATH: Path = Path("data")
@@ -53,7 +55,7 @@ class Query(NamedTuple):
 
     def data(self, client=None):
         if client is None:
-            client = sdmx.Client()
+            client = auth.client()
 
         try:
             client.source = sdmx.get_source(self.source)
@@ -81,7 +83,11 @@ class Query(NamedTuple):
 def load_queries():
     try:
         with open(QUERIES_PATH, "r") as f:
-            return [Query.from_str(line.strip()) for line in f]
+            return [
+                Query.from_str(line.strip())
+                for line in f
+                if line and not line.startswith("#")
+            ]
     except FileNotFoundError:
         return []
 
