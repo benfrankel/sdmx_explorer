@@ -63,7 +63,7 @@ class SdmxRepl:
             case "help" | "h" | "?":
                 self.do_help()
             case "verbose" | "v":
-                self.verbose()
+                self.do_verbose()
             case "clear" | "c":
                 self.do_clear()
             case "quit" | "q" | "exit" | "end" | "stop":
@@ -158,7 +158,7 @@ class SdmxRepl:
 
         if self.ctx.dataflow is not None:
             dataflow = self.ctx.dataflow
-            dataflows = self.ctx.get_dataflows()
+            dataflows = self.ctx.dataflows()
             dataflow_idx = dataflows.index(dataflow)
             table.add_row(
                 "Dataflow",
@@ -168,8 +168,8 @@ class SdmxRepl:
                 escape(self._localize(dataflow.description)),
             )
 
-            dimensions = self.ctx.get_key_dimensions()
-            for dimension_id, dimension_codes in self.ctx.codes.items():
+            dimensions = self.ctx.key_dimensions()
+            for dimension_id, dimension_codes in self.ctx.key_codes.items():
                 if not dimension_codes and (
                     self.dimension is None or dimension_id != self.dimension.id
                 ):
@@ -190,7 +190,7 @@ class SdmxRepl:
                 if not dimension_codes:
                     continue
 
-                codes = self.ctx.get_codelist(dimension)
+                codes = self.ctx.key_codes(dimension)
                 for code in sorted(dimension_codes):
                     code_idx = codes.index(code)
                     table.add_row(
@@ -254,7 +254,7 @@ class SdmxRepl:
         self._print_table(table)
 
     def _list_dataflows(self):
-        dataflows = self.ctx.get_dataflows()
+        dataflows = self.ctx.dataflows()
 
         # Define table.
         table = Table(
@@ -293,7 +293,7 @@ class SdmxRepl:
         self._print_table(table)
 
     def _list_dimensions(self):
-        dimensions = self.ctx.get_key_dimensions()
+        dimensions = self.ctx.key_dimensions()
 
         # Define table.
         table = Table(
@@ -333,7 +333,7 @@ class SdmxRepl:
         self._print_table(table)
 
     def _list_codes(self):
-        codes = self.ctx.get_codelist(self.dimension)
+        codes = self.ctx.codes(self.dimension)
 
         # Define table.
         table = Table(
@@ -372,6 +372,11 @@ class SdmxRepl:
         self._print_table(table)
 
     def do_select(self, key):
+        try:
+            key = int(key)
+        except ValueError:
+            pass
+
         if self.ctx.client.source is NoSource:
             self._select_source(key)
         elif self.ctx.dataflow is None:
@@ -382,76 +387,53 @@ class SdmxRepl:
             self._select_code(key)
 
     def _select_source(self, key):
-        sources = sdmx.list_sources()
-
         try:
-            index = int(key)
-        except ValueError:
-            try:
-                source = sdmx.get_source(key)
-            except KeyError:
-                self._print_error(f'No source found for ID "{key}"')
-                return
+            source = self.ctx.to_source(key)
+        except KeyError:
+            self._print_error(f'No source found with ID "{key}"')
+        except IndexError:
+            self._print_error(
+                f"No source found at index {key} (should be in range 0-{len(self.ctx.sources()) - 1})"
+            )
         else:
-            if not 0 <= index < len(sources):
-                self._print_error(
-                    f"No source found for index {index} (must be in range 0-{len(sources) - 1})"
-                )
-                return
-            source = sdmx.get_source(sources[index])
-
-        self.ctx.select_source(source)
-        self.console.print(f"Selected source: [source]{escape(source.id)}[/]")
+            self.ctx.select_source(source)
+            self.console.print(
+                f"Selected source: [source]{escape(self.ctx.client.source.id)}[/]"
+            )
 
     def _select_dataflow(self, key):
-        dataflows = self.ctx.get_dataflows()
-
         try:
-            index = int(key)
-        except ValueError:
-            try:
-                dataflow = dataflows[key]
-            except KeyError:
-                self._print_error(f'No dataflow found for ID "{key}"')
-                return
+            dataflow = self.ctx.to_dataflow(key)
+        except KeyError:
+            self._print_error(f'No dataflow found with ID "{key}"')
+        except IndexError:
+            self._print_error(
+                f"No dataflow found at index {key} (should be in range 0-{len(self.ctx.dataflows()) - 1})"
+            )
         else:
-            if not 0 <= index < len(dataflows):
-                self._print_error(
-                    f"No dataflow found for index {index} (must be in range 0-{len(dataflows) - 1})"
-                )
-                return
-            dataflow = dataflows[index]
-
-        self.ctx.select_dataflow(dataflow)
-        # Pre-fetch dimensions so that `self._prompt` can get the number of dimensions.
-        self.ctx.get_dimensions()
-        self.console.print(f"Selected dataflow: [dataflow]{escape(dataflow.id)}[/]")
+            self.ctx.select_dataflow(dataflow)
+            # Pre-fetch dimensions so that `self._prompt` can get the number of dimensions.
+            self.ctx.dimensions()
+            self.console.print(
+                f"Selected dataflow: [dataflow]{escape(self.ctx.dataflow.id)}[/]"
+            )
 
     def _select_dimension(self, key):
-        dimensions = self.ctx.get_dimensions()
-
         try:
-            index = int(key)
-        except ValueError:
-            try:
-                dimension = next(x for x in dimensions if x.id == key)
-            except StopIteration:
-                self._print_error(f'No dimension found for ID "{key}"')
-                return
+            dimension = self.ctx.to_key_dimension(key)
+        except KeyError:
+            self._print_error(f'No dimension found with ID "{key}"')
+        except IndexError:
+            self._print_error(
+                f"No dimension found at index {key} (should be in range 0-{len(self.ctx.dimensions()) - 1})"
+            )
         else:
-            if not 0 <= index < len(dimensions):
-                self._print_error(
-                    f"No dimension found for index {index} (must be in range 0-{len(dimensions) - 1})"
-                )
-                return
-            dimension = dimensions[index]
-
-        self.dimension = dimension
-        self.console.print(f"Selected dimension: [dimension]{escape(dimension.id)}[/]")
+            self.dimension = dimension
+            self.console.print(
+                f"Selected dimension: [dimension]{escape(dimension.id)}[/]"
+            )
 
     def _select_code(self, key):
-        codes = self.ctx.get_codelist(self.dimension)
-
         if key == "*":
             self.ctx.clear_codes(self.dimension)
             self.console.print(
@@ -460,29 +442,22 @@ class SdmxRepl:
             return
 
         try:
-            index = int(key)
-        except ValueError:
-            try:
-                code = next(x for x in codes if x.id == key)
-            except StopIteration:
-                self._print_error(f'No code found for ID "{key}"')
-                return
+            code = self.ctx.to_code(self.dimension, key)
+        except KeyError:
+            self._print_error(f'No code found with ID "{key}"')
+        except IndexError:
+            self._print_error(
+                f"No code found at index {key} (should be in range 0-{len(self.ctx.codes(self.dimension)) - 1})"
+            )
         else:
-            if not 0 <= index < len(codes):
-                self._print_error(
-                    f"No code found for index {index} (must be in range 0-{len(codes) - 1})"
+            if self.ctx.toggle_code(self.dimension, code):
+                self.console.print(
+                    f"Added [code]{escape(code.id)}[/] to [dimension]{escape(self.dimension.id)}"
                 )
-                return
-            code = codes[index]
-
-        if self.ctx.toggle_code(self.dimension, code):
-            self.console.print(
-                f"Added [code]{escape(code.id)}[/] to [dimension]{escape(self.dimension.id)}"
-            )
-        else:
-            self.console.print(
-                f"Removed [code]{escape(code.id)}[/] from [dimension]{escape(self.dimension.id)}"
-            )
+            else:
+                self.console.print(
+                    f"Removed [code]{escape(code.id)}[/] from [dimension]{escape(self.dimension.id)}"
+                )
 
     def do_save(self):
         save_query(self.ctx.query())

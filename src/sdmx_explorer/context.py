@@ -15,43 +15,111 @@ class SdmxContext:
         self.client = client
         self.console = console
         self.dataflow = None
-        self.codes = None
+        self.key_codes = None
 
     def reset(self):
         self.client.source = NoSource
         self.dataflow = None
-        self.codes = None
+        self.key_codes = None
 
     def back(self):
         if self.dataflow is not None:
             self.dataflow = None
-            self.codes = None
+            self.key_codes = None
         elif self.client.source is not NoSource:
             self.client.source = NoSource
         else:
             return False
         return True
 
+    def to_source(self, source):
+        if isinstance(source, sdmx.source.Source):
+            return source
+        elif isinstance(source, str):
+            return sdmx.get_source(source)
+        elif isinstance(source, int):
+            if source < 0:
+                raise IndexError()
+            return sdmx.get_source(sdmx.list_sources()[source])
+        else:
+            raise TypeError(f"Unexpected type: {type(source)}")
+
+    def to_dataflow(self, dataflow):
+        if isinstance(dataflow, sdmx.model.common.BaseDataflow):
+            return dataflow
+        elif isinstance(dataflow, str):
+            msg = self.get_dataflow()
+            return msg.dataflow[dataflow]
+        elif isinstance(dataflow, int):
+            if dataflow < 0:
+                raise IndexError()
+            return self.dataflows()[dataflow]
+        else:
+            raise TypeError(f"Unexpected type: {type(dataflow)}")
+
+    def to_key_dimension(self, dimension):
+        if isinstance(dimension, sdmx.model.common.Dimension) and not isinstance(
+            dimension, TimeDimension
+        ):
+            return dimension
+        elif isinstance(dimension, str):
+            return next(x for x in self.key_dimensions() if x.id == dimension)
+        elif isinstance(dimension, int):
+            if dimension < 0:
+                raise IndexError()
+            return self.key_dimensions()[dimension]
+        else:
+            raise TypeError(f"Unexpected type: {type(dimension)}")
+
+    def to_dimension(self, dimension):
+        if isinstance(dimension, sdmx.model.common.Dimension):
+            return dimension
+        elif isinstance(dimension, str):
+            return next(x for x in self.dimensions() if x.id == dimension)
+        elif isinstance(dimension, int):
+            if dimension < 0:
+                raise IndexError()
+            return self.dimensions()[dimension]
+        else:
+            raise TypeError(f"Unexpected type: {type(dimension)}")
+
+    def to_code(self, dimension, code):
+        dimension = self.to_dimension(dimension)
+        if isinstance(code, sdmx.model.common.Code):
+            return code
+        elif isinstance(code, str):
+            msg = self.get_codelist(dimension)
+            return next(iter(msg.codelist.values())).items[code]
+        elif isinstance(code, int):
+            if code < 0:
+                raise IndexError()
+            return self.codes(dimension)[code]
+        else:
+            raise TypeError(f"Unexpected type: {type(dimension)}")
+
     def select_source(self, source):
-        self.client.source = source
+        self.client.source = self.to_source(source)
         self.dataflow = None
-        self.codes = None
+        self.key_codes = None
 
     def select_dataflow(self, dataflow):
         if self.client.source is NoSource:
             raise MissingSelectionError("No source selected")
-        self.dataflow = dataflow
-        self.codes = dict()
+
+        self.dataflow = self.to_dataflow(dataflow)
+        self.key_codes = dict()
 
     def toggle_code(self, dimension, code):
         if self.dataflow is None:
             raise MissingSelectionError("No dataflow selected")
 
-        self.codes.setdefault(dimension.id, set()).symmetric_difference_update(code)
-        return code in self.codes[dimension.id]
+        dimension = self.to_key_dimension(dimension)
+        self.key_codes.setdefault(dimension.id, set()).symmetric_difference_update(code)
+        return code in self.key_codes[dimension.id]
 
     def clear_codes(self, dimension):
-        self.codes.get(dimension.id, set()).clear()
+        dimension = self.to_key_dimension(dimension)
+        self.key_codes.get(dimension.id, set()).clear()
 
     def url(self):
         if self.dataflow is None:
@@ -90,13 +158,13 @@ class SdmxContext:
         if self.dataflow is None:
             raise MissingSelectionError("No dataflow selected")
 
-        dsd = self.get_datastructure()
+        dsd = self.datastructure()
         dimensions = []
         for dimension in dsd.dimensions.components:
             if isinstance(dimension, TimeDimension):
                 continue
 
-            codes = sorted(self.codes.get(dimension.id, set()))
+            codes = sorted(self.key_codes.get(dimension.id, set()))
             if codes:
                 s = "+".join(
                     f"[code]{escape(code.id)}[/]" if rich else code.id for code in codes
@@ -105,6 +173,8 @@ class SdmxContext:
                 s = "*"
 
             # Show the selected dimension.
+            if selected_dimension is not None:
+                selected_dimension = self.to_key_dimension(selected_dimension)
             if selected_dimension is not None and dimension.id == selected_dimension.id:
                 s = (
                     f"[u][dimension]{escape(dimension.id)}[/]={s}[/]"
@@ -115,14 +185,38 @@ class SdmxContext:
             dimensions.append(s)
         return ".".join(dimensions)
 
-    def get_dataflows(self):
+    @staticmethod
+    def sources():
+        return [sdmx.get_source(x) for x in sdmx.list_sources()]
+
+    def dataflows(self):
+        msg = self.get_dataflow()
+        return sorted(msg.dataflow.values())
+
+    def datastructure(self):
+        msg = self.get_datastructure()
+        return msg.structure[self.dataflow.structure.id]
+
+    def dimensions(self):
+        return self.datastructure().dimensions.components
+
+    def key_dimensions(self):
+        return [x for x in self.dimensions() if not isinstance(x, TimeDimension)]
+
+    def codes(self, dimension):
+        msg = self.get_codelist(dimension)
+        return sorted(next(iter(msg.codelist.values())).items.values())
+
+    def data(self):
+        return self.query().data(self.client)
+
+    def get_dataflow(self):
         if self.client.source is NoSource:
             raise MissingSelectionError("No source selected")
         if not self.client.source.supports["dataflow"]:
             raise UnsupportedQueryError('Source does not support "dataflow" queries')
 
-        msg = self.get(resource_type="dataflow")
-        return sorted(msg.dataflow.values())
+        return self.get(resource_type="dataflow")
 
     def get_datastructure(self):
         if self.dataflow is None:
@@ -133,21 +227,15 @@ class SdmxContext:
             )
 
         dsd = self.dataflow.structure
-        msg = self.get(
+        return self.get(
             resource_type="datastructure",
             resource_id=dsd.id,
             agency_id=dsd.maintainer.id,
             references="children",
         )
-        return msg.structure[dsd.id]
-
-    def get_dimensions(self):
-        return self.get_datastructure().dimensions.components
-
-    def get_key_dimensions(self):
-        return [x for x in self.get_dimensions() if not isinstance(x, TimeDimension)]
 
     def get_codelist(self, dimension):
+        dimension = self.to_key_dimension(dimension)
         representation = (
             dimension.local_representation
             or dimension.concept_identity.core_representation
@@ -161,15 +249,11 @@ class SdmxContext:
         if not self.client.source.supports["codelist"]:
             raise UnsupportedQueryError('Source does not support "codelist" queries')
 
-        msg = self.get(
+        return self.get(
             resource_type="codelist",
             resource_id=codelist.id,
             agency_id=codelist.maintainer.id,
         )
-        return sorted(msg.codelist[codelist.id].items.values())
-
-    def get_data(self):
-        return self.query().data(self.client)
 
     # TODO: Fix upstream and simplify this workaround.
     def get(self, **kwargs):
