@@ -493,8 +493,8 @@ class SdmxRepl:
             )
         else:
             self.ctx.select_dataflow(dataflow)
-            # Pre-fetch dimensions so that `self._prompt` can get the number of dimensions.
-            self.ctx.dimensions()
+            # Pre-fetch datastructure so that `self._prompt` can get the number of dimensions.
+            self.ctx.get_datastructure()
             self.console.print(
                 f"Selected dataflow: [dataflow]{escape(self.ctx.dataflow.id)}[/]"
             )
