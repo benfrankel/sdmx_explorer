@@ -1,10 +1,10 @@
 # SDMX Explorer
 
-**SDMX Explorer** is a Python CLI tool for downloading statistical data, allowing you to:
+**SDMX Explorer** is a Python CLI tool for downloading statistical data via [SDMX](https://sdmx.org/about-sdmx/welcome/), allowing you to:
 
-- Explore available SDMX datasets
-- Construct queries into these datasets interactively
-- TODO: Download data according to your saved queries (into a `.xlsx` file)
+- Explore available data
+- Construct and save data queries interactively
+- Download data using saved queries
 
 ## Background
 
@@ -19,13 +19,12 @@ The SDMX information model (**SDMX-IM**) includes the following terminology:
 | **Dimension** | An axis of a dataset                                 | `COUNTRY`    |
 | **Code**      | A valid value for a particular dimension             | `USA`        |
 
-In order to request data, you must construct an SDMX data query.
-This requires a source, dataflow, and **key** (to filter the data by dimension).
+In order to request data, you must construct an SDMX data query out of a source, dataflow, and **key** (which filters the data by dimension).
 
-For example, for a dataflow with dimensions `FREQUENCY`, `SEX`, and `COUNTRY` in that order, the key `A.M.USA` filters for _annual_ data on _men_ from the _USA_.
+For example, in a dataflow with dimensions `[FREQUENCY, SEX, COUNTRY]`, the key `A.M.USA` could filter for _annual_ data on _men_ from the _USA_.
 
-You can match multiple codes for the same dimension with `+` (e.g. `USA+ISR`), or _all_ codes with `*`.
-The key `*.*.*` matches the entire dataflow.
+You can accept multiple codes for the same dimension with `+` (e.g. `USA+ISR`), or _any_ code with `*`.
+For example, the key `*.*.*` would match the entire dataflow.
 
 Note that in order to construct a valid key for a dataflow, you must at least know how many dimensions it has.
 
@@ -67,7 +66,7 @@ Commands: help, quit, list
 
 Enter `help` to see the full list of commands.
 
-### Example
+### Example workflow
 
 Start by entering `list` to see a list of SDMX sources:
 
@@ -79,13 +78,7 @@ Start by entering `list` to see a list of SDMX sources:
 ├────┼──────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────┤
 │  1 │ ABS_JSON     │ Australian Bureau of Statistics                                                                  │ https://api.data.abs.gov.au                                            │
 ├────┼──────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────┤
-│  2 │ AR1          │ Argentina                                                                                        │ https://sdds.indec.gob.ar/files/                                       │
-├────┼──────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────┤
 ...
-├────┼──────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────┤
-│ 31 │ UY110        │ Uruguay                                                                                          │ https://sdmx-mtss.simel.mtss.gub.uy/rest                               │
-├────┼──────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────┤
-│ 32 │ WB           │ World Bank World Integrated Trade Solution                                                       │ https://wits.worldbank.org/API/V1/SDMX/V21/rest                        │
 ├────┼──────────────┼──────────────────────────────────────────────────────────────────────────────────────────────────┼────────────────────────────────────────────────────────────────────────┤
 │ 33 │ WB_WDI       │ World Bank World Development Indicators                                                          │ https://api.worldbank.org/v2/sdmx/rest                                 │
 └────┴──────────────┴──────────────────────────────────────────────────────────────────────────────────────────────────┴────────────────────────────────────────────────────────────────────────┘
@@ -100,6 +93,7 @@ Selected source: IMF_DATA
 ```
 
 Enter `back` to go back and select a different source.
+
 With a source selected, enter `list` to see its dataflows:
 
 ```
@@ -136,10 +130,11 @@ Selected dataflow: CPI
 ```
 
 Enter `back` to go back and select a different dataflow.
+
 With a dataflow selected, enter `list` to see its dimensions:
 
 ```
-Commands: help, quit, list, info, back, data
+Commands: help, quit, list, info, back, save
 IMF_DATA/CPI/*.*.*.*.*> list
 ┏━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃ # ┃ Dimension ID           ┃ Concept Name           ┃ Concept Description                                                                                                                                                ┃
@@ -161,16 +156,17 @@ IMF_DATA/CPI/*.*.*.*.*> list
 You can select the `COUNTRY` dimension by entering its index (`0`) or its ID (`COUNTRY`):
 
 ```
-Commands: help, quit, list, info, back, data
+Commands: help, quit, list, info, back, save
 IMF_DATA/CPI/*.*.*.*.*> 0
 Selected dimension: COUNTRY
 ```
 
 Enter `back` to go back and select a different dimension.
+
 With a dimension selected, enter `list` to see its valid codes:
 
 ```
-Commands: help, quit, list, info, back, data
+Commands: help, quit, list, info, back, save
 IMF_DATA/CPI/COUNTRY=*.*.*.*.*> list
 ┏━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
 ┃   # ┃ Code ID ┃ Code Name                                                                  ┃ Code Description                                                                                                            ┃
@@ -179,13 +175,7 @@ IMF_DATA/CPI/COUNTRY=*.*.*.*.*> list
 ├─────┼─────────┼────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │   1 │ AFG     │ Afghanistan, Islamic Republic of                                           │                                                                                                                             │
 ├─────┼─────────┼────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
-│   2 │ AGO     │ Angola                                                                     │                                                                                                                             │
-├─────┼─────────┼────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
 ...
-├─────┼─────────┼────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 334 │ ZAF     │ South Africa                                                               │                                                                                                                             │
-├─────┼─────────┼────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
-│ 335 │ ZMB     │ Zambia                                                                     │                                                                                                                             │
 ├─────┼─────────┼────────────────────────────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
 │ 336 │ ZWE     │ Zimbabwe                                                                   │                                                                                                                             │
 └─────┴─────────┴────────────────────────────────────────────────────────────────────────────┴─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -194,32 +184,36 @@ IMF_DATA/CPI/COUNTRY=*.*.*.*.*> list
 You can select the `USA` code by entering its index (`317`) or its ID (`USA`):
 
 ```
-Commands: help, quit, list, info, back, data
+Commands: help, quit, list, info, back, save
 IMF_DATA/CPI/COUNTRY=*.*.*.*.*> USA
 Added USA to COUNTRY
 ```
 
 This adds `USA` to the `COUNTRY` dimension of the key.
-You can always see the current key in the prompt (now the key is `USA.*.*.*.*`):
+You can always see the current key in the prompt. For example, right now the key is `USA.*.*.*.*`:
 
 ```
-Commands: help, quit, list, info, back, data
+Commands: help, quit, list, info, back, save
 IMF_DATA/CPI/COUNTRY=USA.*.*.*.*> 
 ```
 
 You can select another `COUNTRY` code to add it to the key, or select the same code again to remove it from the key.
-You can also enter `*` to clear all codes from the currently selected dimension (to match all countries).
+You can also enter `*` to clear any selected codes and return to matching anything.
 
-Once you're satisfied with the key, enter `data` to download data using the query you've constructed:
+Once you're satisfied with the key, enter `save` to save the query you've constructed to `queries.txt`:
 
 ```
-Commands: help, quit, list, info, back, data
+Commands: help, quit, list, info, back, save
 IMF_DATA/CPI/COUNTRY=USA.*.*.*.*> data
 ```
 
-Finally, enter `exit` to exit the REPL when you're done:
+Finally, you can enter `exit` to leave the REPL:
 
 ```
-Commands: help, quit, list, info, back, data
+Commands: help, quit, list, info, back, save
 IMF_DATA/CPI/COUNTRY=USA.*.*.*.*> exit
 ```
+
+## License
+
+The source code in this repository is provided under the [MIT License](./LICENSE-MIT.txt)
