@@ -70,14 +70,81 @@ class SdmxRepl:
                 self.do_quit()
             case "back" | "b":
                 self.do_back()
-            case "info" | "i":
-                self.do_info()
             case "list" | "ls" | "l":
                 self.do_list()
+            case "info" | "i":
+                self.do_info()
+            # TODO: Add this command when SDMX 3.0 is better-supported.
+            # case "preview" | "p":
+            #     self.do_preview()
             case "save" | "s":
                 self.do_save()
             case _:
                 self.do_select(command)
+
+    def do_help(self):
+        child, children = self._child_resource_str()
+
+        # Define table.
+        table = Table(
+            show_edge=True,
+            show_lines=False,
+        )
+        table.add_column(
+            header="Command",
+            style="help",
+            justify="right",
+            overflow="fold",
+        )
+        table.add_column(
+            header="Description",
+            overflow="fold",
+        )
+
+        # Populate table.
+        table.add_row(
+            "help, h",
+            "Show this help message [dim](aliases: ?)[/]",
+        )
+        table.add_row(
+            "verbose, v",
+            "Toggle verbose output",
+        )
+        table.add_row(
+            "clear, c",
+            "Clear the cache",
+        )
+        table.add_row(
+            "quit, q",
+            "Quit the session [dim](aliases: exit, end, stop)[/]",
+        )
+        table.add_row(
+            "back, b",
+            "Navigate back",
+        )
+        table.add_row(
+            "list, l",
+            f"List {children} [dim](aliases: ls)[/]",
+        )
+        table.add_row(
+            "info, i",
+            "Show information on the current selection",
+        )
+        # table.add_row(
+        #    "preview, p",
+        #    "Preview data from the current query",
+        # )
+        table.add_row(
+            "save, s",
+            "Save the current query",
+        )
+        table.add_row(
+            "<INDEX>, <ID>",
+            f"Select a {child}",
+        )
+
+        # Display table.
+        self._print_table(table)
 
     def do_verbose(self, quiet=False):
         self.verbose = not self.verbose
@@ -190,7 +257,7 @@ class SdmxRepl:
                 if not dimension_codes:
                     continue
 
-                codes = self.ctx.key_codes(dimension)
+                codes = self.ctx.codes(dimension)
                 for code in sorted(dimension_codes):
                     code_idx = codes.index(code)
                     table.add_row(
@@ -371,6 +438,20 @@ class SdmxRepl:
         # Display table.
         self._print_table(table)
 
+    def do_preview(self):
+        if self.ctx.version().value < 3:
+            self._print_error(
+                f"[source]{escape(self.ctx.client.source.id)}[/] does not support previewing data."
+            )
+            return
+
+        df = self.ctx.data(limit=10)
+        self.console.print(df)
+
+    def do_save(self):
+        save_query(self.ctx.query())
+        self.console.print(f"Saved query: [b]{self.ctx.url()}[/]")
+
     def do_select(self, key):
         try:
             key = int(key)
@@ -390,7 +471,7 @@ class SdmxRepl:
         try:
             source = self.ctx.to_source(key)
         except KeyError:
-            self._print_error(f'No source found with ID "{key}"')
+            self._print_error(f'No source found with ID "{escape(key)}"')
         except IndexError:
             self._print_error(
                 f"No source found at index {key} (should be in range 0-{len(self.ctx.sources()) - 1})"
@@ -405,7 +486,7 @@ class SdmxRepl:
         try:
             dataflow = self.ctx.to_dataflow(key)
         except KeyError:
-            self._print_error(f'No dataflow found with ID "{key}"')
+            self._print_error(f'No dataflow found with ID "{escape(key)}"')
         except IndexError:
             self._print_error(
                 f"No dataflow found at index {key} (should be in range 0-{len(self.ctx.dataflows()) - 1})"
@@ -422,10 +503,10 @@ class SdmxRepl:
         try:
             dimension = self.ctx.to_key_dimension(key)
         except KeyError:
-            self._print_error(f'No dimension found with ID "{key}"')
+            self._print_error(f'No dimension found with ID "{escape(key)}"')
         except IndexError:
             self._print_error(
-                f"No dimension found at index {key} (should be in range 0-{len(self.ctx.dimensions()) - 1})"
+                f"No dimension found at index {key} (should be in range 0-{len(self.ctx.key_dimensions()) - 1})"
             )
         else:
             self.dimension = dimension
@@ -444,7 +525,7 @@ class SdmxRepl:
         try:
             code = self.ctx.to_code(self.dimension, key)
         except KeyError:
-            self._print_error(f'No code found with ID "{key}"')
+            self._print_error(f'No code found with ID "{escape(key)}"')
         except IndexError:
             self._print_error(
                 f"No code found at index {key} (should be in range 0-{len(self.ctx.codes(self.dimension)) - 1})"
@@ -458,70 +539,6 @@ class SdmxRepl:
                 self.console.print(
                     f"Removed [code]{escape(code.id)}[/] from [dimension]{escape(self.dimension.id)}"
                 )
-
-    def do_save(self):
-        save_query(self.ctx.query())
-        self.console.print(f"Saved query: [b]{self.ctx.url()}[/]")
-
-    def do_help(self):
-        child, children = self._child_resource_str()
-
-        # Define table.
-        table = Table(
-            show_edge=True,
-            show_lines=False,
-        )
-        table.add_column(
-            header="Command",
-            style="help",
-            justify="right",
-            overflow="fold",
-        )
-        table.add_column(
-            header="Description",
-            overflow="fold",
-        )
-
-        # Populate table.
-        table.add_row(
-            "help, h",
-            "Show this help message [dim](aliases: ?)[/]",
-        )
-        table.add_row(
-            "verbose, v",
-            "Toggle verbose output",
-        )
-        table.add_row(
-            "clear, c",
-            "Clear the cache",
-        )
-        table.add_row(
-            "list, l",
-            f"List {children} [dim](aliases: ls)[/]",
-        )
-        table.add_row(
-            "info, i",
-            "Show information on the current selection",
-        )
-        table.add_row(
-            "save, s",
-            "Save the current query",
-        )
-        table.add_row(
-            "back, b",
-            "Navigate up",
-        )
-        table.add_row(
-            "quit, q",
-            "Quit the session [dim](aliases: exit, end, stop)[/]",
-        )
-        table.add_row(
-            "<INDEX>, <ID>",
-            f"Select a {child}",
-        )
-
-        # Display table.
-        self._print_table(table)
 
     def _suggest_commands(self):
         commands = ["help", "quit", "list"]

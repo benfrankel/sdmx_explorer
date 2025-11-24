@@ -1,8 +1,5 @@
-from .init import init
-
-init()
-
 import pandas as pd
+import sdmx
 
 from . import auth
 from .display import CONSOLE
@@ -21,7 +18,7 @@ def download():
     client = auth.client()
 
     # TODO: Actually fix the warning.
-    # sdmx.log.setLevel(100)
+    sdmx.log.setLevel(100)
 
     dfs = []
     for query in load_queries():

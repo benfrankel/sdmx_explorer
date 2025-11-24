@@ -17,21 +17,6 @@ class SdmxContext:
         self.dataflow = None
         self.key_codes = None
 
-    def reset(self):
-        self.client.source = NoSource
-        self.dataflow = None
-        self.key_codes = None
-
-    def back(self):
-        if self.dataflow is not None:
-            self.dataflow = None
-            self.key_codes = None
-        elif self.client.source is not NoSource:
-            self.client.source = NoSource
-        else:
-            return False
-        return True
-
     def to_source(self, source):
         if isinstance(source, sdmx.source.Source):
             return source
@@ -96,6 +81,21 @@ class SdmxContext:
             return self.codes(dimension)[code]
         else:
             raise TypeError(f"Unexpected type: {type(dimension)}")
+
+    def reset(self):
+        self.client.source = NoSource
+        self.dataflow = None
+        self.key_codes = None
+
+    def back(self):
+        if self.dataflow is not None:
+            self.dataflow = None
+            self.key_codes = None
+        elif self.client.source is not NoSource:
+            self.client.source = NoSource
+        else:
+            return False
+        return True
 
     def select_source(self, source):
         self.client.source = self.to_source(source)
@@ -207,24 +207,21 @@ class SdmxContext:
         msg = self.get_codelist(dimension)
         return sorted(next(iter(msg.codelist.values())).items.values())
 
-    def data(self):
-        return self.query().data(self.client)
+    def data(self, **params):
+        return self.query().data(client=self.client, **params)
 
-    def get_dataflow(self):
+    def version(self):
         if self.client.source is NoSource:
             raise MissingSelectionError("No source selected")
-        if not self.client.source.supports["dataflow"]:
-            raise UnsupportedQueryError('Source does not support "dataflow" queries')
 
+        return max(self.client.source.versions)
+
+    def get_dataflow(self):
         return self.get(resource_type="dataflow")
 
     def get_datastructure(self):
         if self.dataflow is None:
             raise MissingSelectionError("No dataflow selected")
-        if not self.client.source.supports["datastructure"]:
-            raise UnsupportedQueryError(
-                'Source does not support "datastructure" queries'
-            )
 
         dsd = self.dataflow.structure
         return self.get(
@@ -244,11 +241,6 @@ class SdmxContext:
         if codelist is None:
             raise ValueError("No codelist associated with the given dimension")
 
-        if self.client.source is NoSource:
-            raise MissingSelectionError("No source selected")
-        if not self.client.source.supports["codelist"]:
-            raise UnsupportedQueryError('Source does not support "codelist" queries')
-
         return self.get(
             resource_type="codelist",
             resource_id=codelist.id,
@@ -257,6 +249,14 @@ class SdmxContext:
 
     # TODO: Fix upstream and simplify this workaround.
     def get(self, **kwargs):
+        if self.client.source is NoSource:
+            raise MissingSelectionError("No source selected")
+        resource_type = kwargs.get("resource_type")
+        if resource_type is not None and not self.client.source.supports[resource_type]:
+            raise UnsupportedQueryError(
+                f'Source does not support "{resource_type}" queries'
+            )
+
         # TODO: Fix `dry_run=True` still logging (info).
         old_level = sdmx.log.level
         sdmx.log.setLevel(logging.FATAL + 1)

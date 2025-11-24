@@ -4,8 +4,6 @@ import sdmx
 from pathlib import Path
 from typing import NamedTuple
 
-from . import auth
-
 
 QUERIES_PATH: Path = Path("queries.txt")
 DATA_PATH: Path = Path("data")
@@ -46,19 +44,19 @@ class Query(NamedTuple):
             self.save_data(df)
         return df
 
-    def data(self, client=None):
+    def data(self, client=None, **params):
         if client is None:
-            client = auth.client()
-
+            client = sdmx.Client()
         try:
             client.source = sdmx.get_source(self.source)
         except KeyError:
-            raise ValueError(f'Source with ID "{self.source}" was not found')
+            raise ValueError(f'No source found with ID "{self.source}"')
 
         msg = client.get(
             resource_type="data",
             resource_id=self.dataflow,
             key=self.key,
+            params=params,
         )
 
         if msg.data[0].series:

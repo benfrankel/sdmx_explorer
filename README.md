@@ -2,9 +2,9 @@
 
 **SDMX Explorer** is a Python CLI tool for downloading statistical data via [SDMX](https://sdmx.org/about-sdmx/welcome/), allowing you to:
 
-- Explore available data
+- Explore the available data
 - Construct and save data queries interactively
-- Download data using saved queries
+- Download data according to your saved queries
 
 ## Background
 
@@ -216,4 +216,4 @@ IMF_DATA/CPI/COUNTRY=USA.*.*.*.*> exit
 
 ## License
 
-The source code in this repository is provided under the [MIT License](./LICENSE-MIT.txt)
+The source code in this repository is made available under the [MIT License](./LICENSE-MIT.txt).
