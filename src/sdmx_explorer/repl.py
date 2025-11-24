@@ -3,38 +3,36 @@ from rich.markup import escape
 from rich.table import Table
 import sdmx
 from sdmx.source import NoSource
-from sdmx.model import TimeDimension
 
 import logging
 
+from .context import SdmxContext
 from .display import CONSOLE
-from .query import save_query, Query
+from .query import save_query
 
 
 log = logging.getLogger(__name__)
 
 
-class Repl:
-    def __init__(self, client):
+class SdmxRepl:
+    def __init__(self, client=None):
         # Display:
         self.console = CONSOLE
+        self.max_unpaged_rows = 12
         self.locale = "en"
         self.verbose = False
-        self.max_unpaged_rows = 12
 
-        # SDMX context:
-        self.client = client
-        self.selected_dataflow = None
-        self.selected_dimension = None
-        self.selected_codes = dict()
+        # SDMX:
+        self.ctx = SdmxContext(client, self.console)
+        self.dimension = None
 
     def run(self):
-        self._display_welcome()
-        while self.client is not None:
+        self.console.print("SDMX Explorer", style="bold purple")
+        while self.ctx is not None:
             try:
-                self._display_commands()
-                command = self._prompt()
-                self._dispatch(command)
+                self._suggest_commands()
+                command = self.prompt()
+                self.run_command(command)
             except KeyboardInterrupt:
                 self.console.print("Interrupted")
             except Exception as err:
@@ -44,51 +42,44 @@ class Repl:
                     self._print_error(f"{err!r}")
             self.console.print()
 
-    def _prompt(self):
-        path = self._get_selection_path(rich=True, selected_dimension=True)
+    def prompt(self):
+        path = self.ctx.path(rich=True, selected_dimension=self.dimension)
         prefix = f"{path}> "
 
         try:
             return self.console.input(prefix).strip()
         except EOFError:
-            if self.client.source is not NoSource:
+            if self.ctx.client.source is not NoSource:
                 self.console.print()
             return "back"
         except BaseException as err:
             self.console.print()
             raise err
 
-    def _dispatch(self, command):
+    def run_command(self, command):
         match command:
             case "":
                 pass
             case "help" | "h" | "?":
-                self._display_help()
+                self.do_help()
             case "verbose" | "v":
-                self._toggle_verbose()
+                self.verbose()
             case "clear" | "c":
-                self._clear_cache()
+                self.do_clear()
             case "quit" | "q" | "exit" | "end" | "stop":
-                self._quit()
+                self.do_quit()
             case "back" | "b":
-                self._back()
+                self.do_back()
             case "info" | "i":
-                self._display_info()
+                self.do_info()
             case "list" | "ls" | "l":
-                self._list()
-            case "data" | "d":
-                self._get_data()
+                self.do_list()
             case "save" | "s":
-                self._save_query()
+                self.do_save()
             case _:
-                try:
-                    self._select(command)
-                except KeyError:
-                    self._print_error(
-                        f'Invalid command or selection "{escape(command)}".'
-                    )
+                self.do_select(command)
 
-    def _toggle_verbose(self, quiet=False):
+    def do_verbose(self, quiet=False):
         self.verbose = not self.verbose
         level = logging.INFO if self.verbose else logging.WARN
         log.setLevel(level)
@@ -96,27 +87,22 @@ class Repl:
         if not quiet:
             self.console.print(f"Verbose: [bold]{self.verbose}[/]", highlight=True)
 
-    def _clear_cache(self):
-        self.client.clear_cache()
+    def do_clear(self):
+        self.ctx.client.clear_cache()
         requests_cache.clear()
         self.console.print("Cache cleared")
 
-    def _quit(self):
-        self.client = None
+    def do_quit(self):
+        self.ctx = None
 
-    def _back(self):
-        if self.selected_dimension is not None:
-            self.selected_dimension = None
-        elif self.selected_dataflow is not None:
-            self.selected_dataflow = None
-            self.selected_codes = dict()
-        elif self.client.source is not NoSource:
-            self.client.source = NoSource
-        else:
-            self._quit()
+    def do_back(self):
+        if self.dimension is not None:
+            self.dimension = None
+        elif not self.ctx.back():
+            self.do_quit()
 
-    def _display_info(self):
-        if self.client.source is NoSource:
+    def do_info(self):
+        if self.ctx.client.source is NoSource:
             self._print_error("Nothing is selected.")
             return
 
@@ -148,9 +134,9 @@ class Repl:
         )
 
         # Populate table.
-        url = self._get_selection_url(quiet=True)
-        if url is not None:
-            path = self._get_selection_path(rich=True, selected_dimension=False)
+        if self.ctx.dataflow is not None:
+            url = self.ctx.url()
+            path = self.ctx.path(rich=True)
             table.add_row(
                 "Query",
                 "",
@@ -159,32 +145,33 @@ class Repl:
                 f"[dim][link {url}]{escape(url)}[/][/]",
             )
 
+        source = self.ctx.client.source
         sources = sdmx.list_sources()
-        source_idx = sources.index(self.client.source.id)
+        source_idx = sources.index(source.id)
         table.add_row(
             "Source",
             str(source_idx),
-            f"[source]{escape(self.client.source.id)}[/]",
-            escape(self.client.source.name),
-            f"[dim][link {self.client.source.url}]{escape(self.client.source.url)}[/][/]",
+            f"[source]{escape(source.id)}[/]",
+            escape(source.name),
+            f"[dim][link {source.url}]{escape(source.url)}[/][/]",
         )
 
-        if self.selected_dataflow is not None:
-            dataflows = sorted(self._get_dataflows().values())
-            dataflow_idx = dataflows.index(self.selected_dataflow)
+        if self.ctx.dataflow is not None:
+            dataflow = self.ctx.dataflow
+            dataflows = self.ctx.get_dataflows()
+            dataflow_idx = dataflows.index(dataflow)
             table.add_row(
                 "Dataflow",
                 str(dataflow_idx),
-                f"[dataflow]{escape(self.selected_dataflow.id)}[/]",
-                escape(self._localize(self.selected_dataflow.name)),
-                escape(self._localize(self.selected_dataflow.description)),
+                f"[dataflow]{escape(dataflow.id)}[/]",
+                escape(self._localize(dataflow.name)),
+                escape(self._localize(dataflow.description)),
             )
 
-            dimensions = self._get_dimensions()
-            for dimension_id, dimension_codes in self.selected_codes.items():
+            dimensions = self.ctx.get_key_dimensions()
+            for dimension_id, dimension_codes in self.ctx.codes.items():
                 if not dimension_codes and (
-                    self.selected_dimension is None
-                    or dimension_id != self.selected_dimension.id
+                    self.dimension is None or dimension_id != self.dimension.id
                 ):
                     continue
 
@@ -203,7 +190,7 @@ class Repl:
                 if not dimension_codes:
                     continue
 
-                codes = self._get_codes(dimension=dimension)
+                codes = self.ctx.get_codelist(dimension)
                 for code in sorted(dimension_codes):
                     code_idx = codes.index(code)
                     table.add_row(
@@ -217,12 +204,12 @@ class Repl:
         # Display table.
         self._print_table(table)
 
-    def _list(self):
-        if self.client.source is NoSource:
+    def do_list(self):
+        if self.ctx.client.source is NoSource:
             self._list_sources()
-        elif self.selected_dataflow is None:
+        elif self.ctx.dataflow is None:
             self._list_dataflows()
-        elif self.selected_dimension is None:
+        elif self.dimension is None:
             self._list_dimensions()
         else:
             self._list_codes()
@@ -267,9 +254,7 @@ class Repl:
         self._print_table(table)
 
     def _list_dataflows(self):
-        dataflows = self._get_dataflows()
-        if dataflows is None:
-            return
+        dataflows = self.ctx.get_dataflows()
 
         # Define table.
         table = Table(
@@ -296,21 +281,19 @@ class Repl:
         )
 
         # Populate table.
-        for idx, dfd in enumerate(sorted(dataflows.values())):
+        for idx, dataflow in enumerate(dataflows):
             table.add_row(
                 str(idx),
-                escape(dfd.id),
-                escape(self._localize(dfd.name)),
-                escape(self._localize(dfd.description)),
+                escape(dataflow.id),
+                escape(self._localize(dataflow.name)),
+                escape(self._localize(dataflow.description)),
             )
 
         # Display table.
         self._print_table(table)
 
     def _list_dimensions(self):
-        dimensions = self._get_dimensions()
-        if dimensions is None:
-            return
+        dimensions = self.ctx.get_key_dimensions()
 
         # Define table.
         table = Table(
@@ -337,11 +320,11 @@ class Repl:
         )
 
         # Populate table.
-        for idx, dim in enumerate(dimensions):
-            concept = dim.concept_identity
+        for idx, dimension in enumerate(dimensions):
+            concept = dimension.concept_identity
             table.add_row(
                 str(idx),
-                escape(dim.id),
+                escape(dimension.id),
                 escape(self._localize(concept.name)),
                 escape(self._localize(concept.description)),
             )
@@ -350,9 +333,7 @@ class Repl:
         self._print_table(table)
 
     def _list_codes(self):
-        codes = self._get_codes()
-        if codes is None:
-            return
+        codes = self.ctx.get_codelist(self.dimension)
 
         # Define table.
         table = Table(
@@ -390,12 +371,12 @@ class Repl:
         # Display table.
         self._print_table(table)
 
-    def _select(self, key):
-        if self.client.source is NoSource:
+    def do_select(self, key):
+        if self.ctx.client.source is NoSource:
             self._select_source(key)
-        elif self.selected_dataflow is None:
+        elif self.ctx.dataflow is None:
             self._select_dataflow(key)
-        elif self.selected_dimension is None:
+        elif self.dimension is None:
             self._select_dimension(key)
         else:
             self._select_code(key)
@@ -407,78 +388,74 @@ class Repl:
             index = int(key)
         except ValueError:
             try:
-                self.client.source = sdmx.get_source(key)
+                source = sdmx.get_source(key)
             except KeyError:
-                raise ValueError(f'Source with ID "{key}" was not found')
+                self._print_error(f'No source found for ID "{key}"')
+                return
         else:
             if not 0 <= index < len(sources):
-                raise IndexError(
-                    f'Source index "{index}" is not in range (0-{len(sources)})'
+                self._print_error(
+                    f"No source found for index {index} (must be in range 0-{len(sources) - 1})"
                 )
-            self.client.source = sdmx.get_source(sources[index])
+                return
+            source = sdmx.get_source(sources[index])
 
-        self.console.print(
-            f"Selected source: [source]{escape(self.client.source.id)}[/]"
-        )
+        self.ctx.select_source(source)
+        self.console.print(f"Selected source: [source]{escape(source.id)}[/]")
 
     def _select_dataflow(self, key):
-        dataflows = self._get_dataflows()
-        if dataflows is None:
-            return False
+        dataflows = self.ctx.get_dataflows()
 
         try:
             index = int(key)
         except ValueError:
             try:
-                self.selected_dataflow = dataflows[key]
+                dataflow = dataflows[key]
             except KeyError:
-                raise ValueError(f'Dataflow with ID "{key}" was not found')
+                self._print_error(f'No dataflow found for ID "{key}"')
+                return
         else:
             if not 0 <= index < len(dataflows):
-                raise IndexError(
-                    f'Dataflow index "{index}" is not in range (0-{len(dataflows)})'
+                self._print_error(
+                    f"No dataflow found for index {index} (must be in range 0-{len(dataflows) - 1})"
                 )
-            self.selected_dataflow = sorted(dataflows.values())[index]
+                return
+            dataflow = dataflows[index]
 
+        self.ctx.select_dataflow(dataflow)
         # Pre-fetch dimensions so that `self._prompt` can get the number of dimensions.
-        self._get_dimensions()
-
-        self.console.print(
-            f"Selected dataflow: [dataflow]{escape(self.selected_dataflow.id)}[/]"
-        )
+        self.ctx.get_dimensions()
+        self.console.print(f"Selected dataflow: [dataflow]{escape(dataflow.id)}[/]")
 
     def _select_dimension(self, key):
-        dimensions = self._get_dimensions()
-        if dimensions is None:
-            return False
+        dimensions = self.ctx.get_dimensions()
 
         try:
             index = int(key)
         except ValueError:
             try:
-                self.selected_dimension = next(x for x in dimensions if x.id == key)
+                dimension = next(x for x in dimensions if x.id == key)
             except StopIteration:
-                raise ValueError(f'Dimension with ID "{key}" was not found')
+                self._print_error(f'No dimension found for ID "{key}"')
+                return
         else:
             if not 0 <= index < len(dimensions):
-                raise IndexError(
-                    f'Dimension index "{index}" is not in range (0-{len(dimensions)})'
+                self._print_error(
+                    f"No dimension found for index {index} (must be in range 0-{len(dimensions) - 1})"
                 )
-            self.selected_dimension = dimensions[index]
+                return
+            dimension = dimensions[index]
 
-        self.console.print(
-            f"Selected dimension: [dimension]{escape(self.selected_dimension.id)}[/]"
-        )
+        self.dimension = dimension
+        self.console.print(f"Selected dimension: [dimension]{escape(dimension.id)}[/]")
 
     def _select_code(self, key):
-        codes = self._get_codes()
-        if codes is None:
-            return False
+        codes = self.ctx.get_codelist(self.dimension)
 
         if key == "*":
-            self.selected_codes[self.selected_dimension.id] = set()
+            self.ctx.clear_codes(self.dimension)
             self.console.print(
-                f"Cleared all codes from [dimension]{self.selected_dimension.id}[/]"
+                f"Cleared all codes from [dimension]{self.dimension.id}[/]"
             )
             return
 
@@ -488,236 +465,30 @@ class Repl:
             try:
                 code = next(x for x in codes if x.id == key)
             except StopIteration:
-                raise ValueError(f'Code with ID "{key}" was not found')
+                self._print_error(f'No code found for ID "{key}"')
+                return
         else:
             if not 0 <= index < len(codes):
-                raise IndexError(
-                    f'Code index "{index}" is not in range (0-{len(codes)})'
+                self._print_error(
+                    f"No code found for index {index} (must be in range 0-{len(codes) - 1})"
                 )
+                return
             code = codes[index]
 
-        dim_codes = self.selected_codes.setdefault(self.selected_dimension.id, set())
-        dim_codes.symmetric_difference_update(code)
-
-        if code in dim_codes:
+        if self.ctx.toggle_code(self.dimension, code):
             self.console.print(
-                f"Added [code]{escape(code.id)}[/] to [dimension]{escape(self.selected_dimension.id)}"
+                f"Added [code]{escape(code.id)}[/] to [dimension]{escape(self.dimension.id)}"
             )
         else:
             self.console.print(
-                f"Removed [code]{escape(code.id)}[/] from [dimension]{escape(self.selected_dimension.id)}"
+                f"Removed [code]{escape(code.id)}[/] from [dimension]{escape(self.dimension.id)}"
             )
 
-    def _get_dataflows(self, quiet=False):
-        if not self.client.source.supports["dataflow"]:
-            if not quiet:
-                self._print_error(
-                    f"[source]{self.client.source.id}[/] does not support listing dataflows."
-                )
-            return
+    def do_save(self):
+        save_query(self.ctx.query())
+        self.console.print(f"Saved query: [b]{self.ctx.url()}[/]")
 
-        msg = self._get(
-            "dataflows",
-            resource_type="dataflow",
-        )
-        if msg is None:
-            return
-
-        return msg.dataflow
-
-    def _get_dimensions(self, quiet=False):
-        if not self.client.source.supports["datastructure"]:
-            if not quiet:
-                self._print_error(
-                    f"[source]{self.client.source.id}[/] does not support listing dimensions."
-                )
-            return
-        if self.selected_dataflow is None:
-            return
-
-        dsd = self.selected_dataflow.structure
-        msg = self._get(
-            "dimensions",
-            resource_type="datastructure",
-            resource_id=dsd.id,
-            agency_id=dsd.maintainer.id,
-            references="children",
-        )
-        print(dsd.id, dsd.maintainer.id)
-        if msg is None:
-            return
-
-        dsd = msg.structure[dsd.id]
-        return [
-            dim for dim in dsd.dimensions.components if type(dim) is not TimeDimension
-        ]
-
-    def _get_codes(self, dimension=None, quiet=False):
-        if not self.client.source.supports["codelist"]:
-            if not quiet:
-                self._print_error(
-                    f"[source]{self.client.source.id}[/] does not support listing codes."
-                )
-            return
-        if dimension is None:
-            dimension = self.selected_dimension
-        if dimension is None:
-            return
-
-        representation = (
-            dimension.local_representation
-            or dimension.concept_identity.core_representation
-        )
-        codelist = representation.enumerated
-        if codelist is None:
-            if not quiet:
-                self._print_error(
-                    f"[dimension]{dimension.id}[/] does not have a codelist."
-                )
-            return
-
-        msg = self._get(
-            "codes",
-            resource_type="codelist",
-            resource_id=codelist.id,
-            agency_id=codelist.maintainer.id,
-        )
-        if msg is None:
-            return
-
-        return sorted(msg.codelist[codelist.id].items.values())
-
-    def _get_selection_key(self, rich=False, selected_dimension=False, quiet=False):
-        if self.selected_dataflow is None:
-            if not quiet:
-                self._print_error("No dataflow selected.")
-            return
-
-        key = []
-        for dim in self._get_dimensions() or []:
-            dim_codes = self.selected_codes.setdefault(dim.id, set())
-            if dim_codes:
-                s = "+".join(
-                    f"[code]{escape(code.id)}[/]" if rich else code.id
-                    for code in sorted(dim_codes)
-                )
-            else:
-                s = "*"
-
-            # Underline the selected dimension's codes.
-            if (
-                selected_dimension
-                and self.selected_dimension is not None
-                and self.selected_dimension.id == dim.id
-            ):
-                s = (
-                    f"[u][dimension]{escape(self.selected_dimension.id)}[/]={s}[/]"
-                    if rich
-                    else f"{self.selected_dimension.id}={s}"
-                )
-
-            key.append(s)
-        key = ".".join(key)
-
-        return key
-
-    def _get_selection_path(self, rich=False, selected_dimension=False):
-        path = []
-        if self.client.source is not NoSource:
-            path = [
-                f"[source]{escape(self.client.source.id)}[/]"
-                if rich
-                else self.client.source.id
-            ]
-        if self.selected_dataflow is not None:
-            path.append(
-                f"[dataflow]{escape(self.selected_dataflow.id)}[/]"
-                if rich
-                else self.selected_dataflow.id
-            )
-            key = self._get_selection_key(
-                rich=rich,
-                selected_dimension=selected_dimension,
-            )
-            path.append(key)
-        path = "/".join(path)
-
-        return path
-
-    def _get_selection_url(self, quiet=False):
-        key = self._get_selection_key(quiet=quiet)
-        if key is None:
-            return
-
-        req = self._get(
-            "data",
-            resource_type="data",
-            resource_id=self.selected_dataflow.id,
-            key=key,
-            dry_run=True,
-        )
-        return req.url
-
-    def _get_data(self, quiet=False):
-        if self.selected_dataflow is None:
-            if not quiet:
-                self._print_error("No dataflow selected.")
-            return
-
-        key = self._get_selection_key()
-        msg = self._get(
-            "data",
-            resource_type="data",
-            resource_id=self.selected_dataflow.id,
-            key=key,
-        )
-        if msg is None:
-            return
-
-        self.console.print(msg)
-
-    def _get(self, target, **kwargs):
-        # TODO: Open an issue for `dry_run=True` still logging. This is a workaround to get the URL without logging.
-        if self.verbose:
-            self._toggle_verbose(quiet=True)
-            new_kwargs = dict(kwargs)
-            new_kwargs["dry_run"] = True
-            req = self.client.get(**new_kwargs)
-            self._toggle_verbose(quiet=True)
-        else:
-            new_kwargs = dict(kwargs)
-            new_kwargs["dry_run"] = True
-            req = self.client.get(**new_kwargs)
-        if req.url in self.client.cache:
-            return self.client.cache[req.url]
-
-        if kwargs.get("dry_run", False):
-            return req
-
-        with self.console.status(
-            f"Fetching {target}: [dim][link {req.url}]{escape(req.url)}[/][/]"
-        ):
-            msg = self.client.get(use_cache=True, **kwargs)
-
-        # TODO: Workaround for <https://github.com/khaeru/sdmx/issues/256>.
-        self.client.cache[req.url] = msg
-        return msg
-
-    def _save_query(self):
-        query = Query(
-            source=self.client.source.id,
-            dataflow=self.selected_dataflow.id,
-            key=self._get_selection_key(),
-        )
-        save_query(query)
-
-        url = self._get_selection_url()
-        self.console.print(f"Saved query: [b]{url}[/]")
-
-    def _display_welcome(self):
-        self.console.print("SDMX Explorer", style="bold purple")
-
-    def _display_help(self):
+    def do_help(self):
         child, children = self._child_resource_str()
 
         # Define table.
@@ -758,10 +529,6 @@ class Repl:
             "Show information on the current selection",
         )
         table.add_row(
-            "data, d",
-            "Download data",
-        )
-        table.add_row(
             "save, s",
             "Save the current query",
         )
@@ -781,12 +548,12 @@ class Repl:
         # Display table.
         self._print_table(table)
 
-    def _display_commands(self):
+    def _suggest_commands(self):
         commands = ["help", "quit", "list"]
-        if self.client.source is not NoSource:
+        if self.ctx.client.source is not NoSource:
             commands.extend(["info", "back"])
-        if self.selected_dataflow is not None:
-            commands.extend(["data", "save"])
+        if self.ctx.dataflow is not None:
+            commands.append("save")
         commands = ", ".join(commands)
 
         self.console.print(f"Commands: {commands}", style="help")
@@ -807,11 +574,11 @@ class Repl:
         return s.localized_default(self.locale)
 
     def _child_resource_str(self):
-        if self.client.source is NoSource:
+        if self.ctx.client.source is NoSource:
             return "source", "sources"
-        elif self.selected_dataflow is None:
+        elif self.ctx.dataflow is None:
             return "dataflow", "dataflows"
-        elif self.selected_dimension is None:
+        elif self.dimension is None:
             return "dimension", "dimensions"
         else:
             return "code", "codes"

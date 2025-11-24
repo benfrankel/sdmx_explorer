@@ -13,7 +13,7 @@ import requests_cache
 from datetime import timedelta
 
 from . import auth
-from .repl import Repl
+from .repl import SdmxRepl
 
 
 def main():
@@ -26,4 +26,4 @@ def main():
     except KeyboardInterrupt:
         print("Interrupted")
         return
-    Repl(client).run()
+    SdmxRepl(client).run()

@@ -29,20 +29,13 @@ class Query(NamedTuple):
 
     def to_str(self, rich=False):
         if rich:
-            key = []
-            for dim_codes in self.key.split("."):
-                options = []
-                for option in dim_codes.split(";"):
-                    codes = []
-                    for code in option.split("+"):
-                        if code == "*":
-                            codes.append(code)
-                        else:
-                            codes.append(f"[code]{escape(code)}[/]")
-                    options.append("+".join(codes))
-                key.append(";".join(options))
-            key = ".".join(key)
-
+            key = ".".join(
+                "+".join(
+                    code if code == "*" else f"[code]{escape(code)}[/]"
+                    for code in dimension.split("+")
+                )
+                for dimension in self.key.split(".")
+            )
             return f"[source]{escape(self.source)}[/]/[dataflow]{escape(self.dataflow)}[/]/{key}"
         else:
             return "/".join(self)
