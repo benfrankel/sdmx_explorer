@@ -8,7 +8,7 @@ dependencies = [
     "requests-cache >= 1.2.1",
     "rich >= 14.2.0",
     # TODO: Pin to the next release.
-    "sdmx1 @ git+https://github.com/khaeru/sdmx.git@f57d7f5be8249027bf63d5198a54351019b045a2",
+    "sdmx1 @ git+https://github.com/khaeru/sdmx.git@c9cc8d56012d49e2235dd0772c7aeea8e04f1d3e",
 ]
 name = "sdmx-explorer"
 version = "0.1.0"

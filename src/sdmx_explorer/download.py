@@ -71,15 +71,19 @@ def download():
 
 
 def pivot(df):
+    TIME = "TIME_PERIOD"
+    VALUE = "value"
     NAN_MARKER = "__THIS_IS_NAN__"
-    df = df.fillna(NAN_MARKER)
-    df = df.pivot_table(
-        index=set(df.columns.tolist()).difference(["TIME_PERIOD", "value"]),
-        columns="TIME_PERIOD",
-        values="value",
-    ).reset_index()
-    df = df.replace(NAN_MARKER, np.nan)
-    return df
+    return (
+        df.fillna(NAN_MARKER)
+        .pivot_table(
+            index=set(df.columns.tolist()).difference([TIME, VALUE]),
+            columns=TIME,
+            values=VALUE,
+        )
+        .reset_index()
+        .replace(NAN_MARKER, np.nan)
+    )
 
 
 def save_download(query, df):

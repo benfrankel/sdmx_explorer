@@ -3,8 +3,6 @@ import sdmx
 from sdmx.model import TimeDimension
 from sdmx.source import NoSource
 
-import logging
-
 from .query import Query
 
 
@@ -294,42 +292,29 @@ class SdmxContext:
             **kwargs,
         )
 
-    # TODO: Fix upstream and simplify this workaround.
     def get(self, **kwargs):
         if self.client.source is NoSource:
             raise MissingSelectionError("No source selected")
         resource_type = kwargs.get("resource_type")
-        if resource_type is not None and not self.client.source.supports[resource_type]:
+        if not self.client.source.supports.get(resource_type, False):
             raise UnsupportedQueryError(
                 f'Source does not support "{resource_type}" queries'
             )
 
-        # TODO: Fix `dry_run=True` still logging (info).
-        old_level = sdmx.log.level
-        sdmx.log.setLevel(logging.FATAL + 1)
-
-        dry_run_kwargs = dict(kwargs)
-        dry_run_kwargs["dry_run"] = True
-        # TODO: Fix `dry_run` + `use_cache` returning the cache hit instead of returning the request.
-        dry_run_kwargs["use_cache"] = False
-        req = self.client.get(**dry_run_kwargs)
-
-        sdmx.log.setLevel(old_level)
-
-        if kwargs.get("dry_run", False):
-            return req
-
-        if req.url in self.client.cache:
-            return self.client.cache[req.url]
-
         kwargs["use_cache"] = True
-        if self.console is None:
+        if self.console is None or kwargs.get("dry_run", False):
             msg = self.client.get(**kwargs)
         else:
-            with self.console.status(
-                f"Requesting: [dim][link {req.url}]{escape(req.url)}[/][/]"
-            ):
-                msg = self.client.get(**kwargs)
+            dry_run_kwargs = dict(kwargs)
+            dry_run_kwargs["dry_run"] = True
+            req = self.client.get(**dry_run_kwargs)
+            if req.url in self.client.cache:
+                msg = self.client.cache[req.url]
+            else:
+                with self.console.status(
+                    f"Requesting: [dim][link {req.url}]{escape(req.url)}[/][/]"
+                ):
+                    msg = self.client.get(**kwargs)
 
         if msg is None:
             raise EmptyResponseError()

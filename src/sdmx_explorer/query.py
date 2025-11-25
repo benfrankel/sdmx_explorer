@@ -36,12 +36,6 @@ class Query(NamedTuple):
         else:
             return "/".join(self)
 
-    def download(self, client=None):
-        df = self.data(client=client)
-        if df is not None:
-            self.save_data(df)
-        return df
-
 
 def load_queries():
     try:
