@@ -17,6 +17,9 @@ class SdmxContext:
         self.dataflow = None
         self.key_codes = None
 
+    def __repr__(self):
+        return f"{self.__class__.__name__}(path={self.path()!r})"
+
     def to_source(self, source):
         if isinstance(source, sdmx.source.Source):
             return source
@@ -97,10 +100,36 @@ class SdmxContext:
             return False
         return True
 
+    def select_query(self, query):
+        old_source = self.client.source
+        old_dataflow = self.dataflow
+        old_key_codes = self.key_codes
+        try:
+            self.select_source(query.source)
+            self.select_dataflow(query.dataflow)
+            self.key_codes = dict()
+
+            key_dimensions = self.key_dimensions()
+            key_codes = query.key.split(".")
+            if len(key_codes) != len(key_dimensions):
+                raise ValueError(
+                    f"Query key has {len(key_codes)} dimensions; expected {len(key_dimensions)}"
+                )
+            for dimension, codes in zip(key_dimensions, key_codes):
+                if codes == "*":
+                    continue
+                self.key_codes[dimension] = set(
+                    self.to_code(dimension, code) for code in codes.split("+")
+                )
+        except BaseException:
+            self.client.source = old_source
+            self.dataflow = old_dataflow
+            self.key_codes = old_key_codes
+            raise
+
     def select_source(self, source):
+        self.reset()
         self.client.source = self.to_source(source)
-        self.dataflow = None
-        self.key_codes = None
 
     def select_dataflow(self, dataflow):
         if self.client.source is NoSource:
@@ -118,17 +147,18 @@ class SdmxContext:
         return code in self.key_codes[dimension.id]
 
     def clear_codes(self, dimension):
+        if self.dataflow is None:
+            raise MissingSelectionError("No dataflow selected")
+
         dimension = self.to_key_dimension(dimension)
         self.key_codes.get(dimension.id, set()).clear()
 
     def url(self):
-        if self.dataflow is None:
-            raise MissingSelectionError("No dataflow selected")
-
+        key = self.key()
         req = self.get(
             resource_type="data",
             resource_id=self.dataflow.id,
-            key=self.key(),
+            key=key,
             dry_run=True,
         )
         return req.url
@@ -145,19 +175,14 @@ class SdmxContext:
         return "/".join(parts)
 
     def query(self):
-        if self.dataflow is None:
-            raise MissingSelectionError("No dataflow selected")
-
+        key = self.key()
         return Query(
             source=self.client.source.id,
             dataflow=self.dataflow.id,
-            key=self.key(),
+            key=key,
         )
 
     def key(self, rich=False, selected_dimension=None):
-        if self.dataflow is None:
-            raise MissingSelectionError("No dataflow selected")
-
         dsd = self.datastructure()
         dimensions = []
         for dimension in dsd.dimensions.components:
@@ -185,6 +210,12 @@ class SdmxContext:
             dimensions.append(s)
         return ".".join(dimensions)
 
+    def version(self):
+        if self.client.source is NoSource:
+            raise MissingSelectionError("No source selected")
+
+        return max(self.client.source.versions)
+
     @staticmethod
     def sources():
         return [sdmx.get_source(x) for x in sdmx.list_sources()]
@@ -203,23 +234,28 @@ class SdmxContext:
     def key_dimensions(self):
         return [x for x in self.dimensions() if not isinstance(x, TimeDimension)]
 
+    def attributes(self):
+        return self.datastructure().attributes.components
+
+    def measures(self):
+        return self.datastructure().measures.components
+
     def codes(self, dimension):
         msg = self.get_codelist(dimension)
         return sorted(next(iter(msg.codelist.values())).items.values())
 
-    def data(self, **params):
-        return self.query().data(client=self.client, **params)
+    def data(self):
+        msg = self.get_data()
+        if msg.data[0].series:
+            return sdmx.to_pandas(msg).reset_index()
 
-    def version(self):
-        if self.client.source is NoSource:
-            raise MissingSelectionError("No source selected")
+    def get_dataflow(self, **kwargs):
+        return self.get(
+            resource_type="dataflow",
+            **kwargs,
+        )
 
-        return max(self.client.source.versions)
-
-    def get_dataflow(self):
-        return self.get(resource_type="dataflow")
-
-    def get_datastructure(self):
+    def get_datastructure(self, **kwargs):
         if self.dataflow is None:
             raise MissingSelectionError("No dataflow selected")
 
@@ -229,9 +265,10 @@ class SdmxContext:
             resource_id=dsd.id,
             agency_id=dsd.maintainer.id,
             references="children",
+            **kwargs,
         )
 
-    def get_codelist(self, dimension):
+    def get_codelist(self, dimension, **kwargs):
         dimension = self.to_key_dimension(dimension)
         representation = (
             dimension.local_representation
@@ -245,6 +282,16 @@ class SdmxContext:
             resource_type="codelist",
             resource_id=codelist.id,
             agency_id=codelist.maintainer.id,
+            **kwargs,
+        )
+
+    def get_data(self, **kwargs):
+        key = self.key()
+        return self.get(
+            resource_type="data",
+            resource_id=self.dataflow.id,
+            key=key,
+            **kwargs,
         )
 
     # TODO: Fix upstream and simplify this workaround.

@@ -1,12 +1,10 @@
 from rich.markup import escape
-import sdmx
 
 from pathlib import Path
 from typing import NamedTuple
 
 
 QUERIES_PATH: Path = Path("queries.txt")
-DATA_PATH: Path = Path("data")
 
 
 class Query(NamedTuple):
@@ -43,32 +41,6 @@ class Query(NamedTuple):
         if df is not None:
             self.save_data(df)
         return df
-
-    def data(self, client=None, **params):
-        if client is None:
-            client = sdmx.Client()
-        try:
-            client.source = sdmx.get_source(self.source)
-        except KeyError:
-            raise ValueError(f'No source found with ID "{self.source}"')
-
-        msg = client.get(
-            resource_type="data",
-            resource_id=self.dataflow,
-            key=self.key,
-            params=params,
-        )
-
-        if msg.data[0].series:
-            return sdmx.to_pandas(msg).reset_index()
-
-    def save_data(self, df):
-        path = self._data_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(path, sep="\t", index=False)
-
-    def _data_path(self):
-        return DATA_PATH / self.source / self.dataflow / f"{self.key}.tsv"
 
 
 def load_queries():
