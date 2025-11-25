@@ -27,7 +27,7 @@ def download():
     # TODO: Actually fix the warning instead of suppressing it.
     sdmx.log.setLevel(100)
 
-    dfs = []
+    downloads = []
     for query in load_queries():
         query_str = query.to_str(rich=True)
         with console.status(f"Downloading {query_str}"):
@@ -52,21 +52,28 @@ def download():
         df = df.drop(columns=to_drop)
 
         # TODO: Make this optional.
-        dfs.append(df)
+        download = df.copy()
+        download.insert(0, "SOURCE_ID", query.source)
+        download.insert(1, "DATAFLOW_ID", query.dataflow)
+        downloads.append(download)
 
         # TODO: Make this optional.
         # Pivot data so each row represents an entire time series.
         df = pivot(df)
 
+        # TODO: Make this optional.
         # Save each download in its own file.
         save_download(query, df)
         console.print(f"Downloaded {len(df)} rows for {query_str}", highlight=True)
 
     # Save all downloads together in a single file.
-    if dfs:
-        # TODO: Add columns for source and dataflow IDs.
-        full = pd.concat(dfs, ignore_index=True).drop_duplicates()
+    if downloads:
+        full = pd.concat(downloads, ignore_index=True).drop_duplicates()
         full = pivot(full)
+        columns = ["SOURCE_ID", "DATAFLOW_ID"] + [
+            x for x in full.columns.tolist() if x != "SOURCE_ID" and x != "DATAFLOW_ID"
+        ]
+        full = full[columns]
         save_full(full)
 
 
