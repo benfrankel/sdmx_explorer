@@ -50,11 +50,8 @@ def load_queries():
 
 
 def save_query(query):
-    queries = load_queries()
-    if query in queries:
+    if query in load_queries():
         raise ValueError(f"Query already saved: {query}")
-    queries.append(query)
-    queries.sort()
 
-    with open(QUERIES_PATH, "w") as f:
-        f.writelines(f"{query}\n" for query in queries)
+    with open(QUERIES_PATH, "a") as f:
+        f.write(f"{query}\n")

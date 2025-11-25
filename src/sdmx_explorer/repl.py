@@ -8,7 +8,7 @@ import logging
 
 from .context import SdmxContext
 from .display import CONSOLE
-from .query import save_query
+from .query import QUERIES_PATH, save_query
 
 
 log = logging.getLogger(__name__)
@@ -449,8 +449,9 @@ class SdmxRepl:
         self.console.print(df)
 
     def do_save(self):
-        save_query(self.ctx.query())
-        self.console.print(f"Saved query: [b]{self.ctx.url()}[/]")
+        query = self.ctx.query()
+        save_query(query)
+        self.console.print(f"Saved {query.to_str(rich=True)} to {QUERIES_PATH}")
 
     def do_select(self, key):
         try:
