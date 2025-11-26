@@ -3,7 +3,7 @@ import sdmx
 from sdmx.model import TimeDimension
 from sdmx.source import NoSource
 
-from .query import Query
+from .query import SdmxPath
 
 
 class SdmxContext:
@@ -25,7 +25,7 @@ class SdmxContext:
             return sdmx.get_source(source)
         elif isinstance(source, int):
             if source < 0:
-                raise IndexError()
+                raise IndexError("List index is negative")
             return sdmx.get_source(sdmx.list_sources()[source])
         else:
             raise TypeError(f"Unexpected type: {type(source)}")
@@ -38,7 +38,7 @@ class SdmxContext:
             return msg.dataflow[dataflow]
         elif isinstance(dataflow, int):
             if dataflow < 0:
-                raise IndexError()
+                raise IndexError("List index is negative")
             return self.dataflows()[dataflow]
         else:
             raise TypeError(f"Unexpected type: {type(dataflow)}")
@@ -49,10 +49,13 @@ class SdmxContext:
         ):
             return dimension
         elif isinstance(dimension, str):
-            return next(x for x in self.key_dimensions() if x.id == dimension)
+            try:
+                return next(x for x in self.key_dimensions() if x.id == dimension)
+            except StopIteration:
+                raise KeyError(dimension)
         elif isinstance(dimension, int):
             if dimension < 0:
-                raise IndexError()
+                raise IndexError("List index is negative")
             return self.key_dimensions()[dimension]
         else:
             raise TypeError(f"Unexpected type: {type(dimension)}")
@@ -61,10 +64,13 @@ class SdmxContext:
         if isinstance(dimension, sdmx.model.common.Dimension):
             return dimension
         elif isinstance(dimension, str):
-            return next(x for x in self.dimensions() if x.id == dimension)
+            try:
+                return next(x for x in self.dimensions() if x.id == dimension)
+            except StopIteration:
+                raise KeyError(dimension)
         elif isinstance(dimension, int):
             if dimension < 0:
-                raise IndexError()
+                raise IndexError("List index is negative")
             return self.dimensions()[dimension]
         else:
             raise TypeError(f"Unexpected type: {type(dimension)}")
@@ -78,7 +84,7 @@ class SdmxContext:
             return next(iter(msg.codelist.values())).items[code]
         elif isinstance(code, int):
             if code < 0:
-                raise IndexError()
+                raise IndexError("List index is negative")
             return self.codes(dimension)[code]
         else:
             raise TypeError(f"Unexpected type: {type(dimension)}")
@@ -170,11 +176,11 @@ class SdmxContext:
             id = self.dataflow.id
             parts.append(f"[dataflow]{escape(id)}[/]" if rich else id)
             parts.append(self.key(rich=rich, selected_dimension=selected_dimension))
-        return "/".join(parts)
+        return "/" + "/".join(parts)
 
     def query(self):
         key = self.key()
-        return Query(
+        return SdmxPath(
             source=self.client.source.id,
             dataflow=self.dataflow.id,
             key=key,

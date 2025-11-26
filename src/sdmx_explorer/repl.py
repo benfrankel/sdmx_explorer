@@ -6,9 +6,9 @@ from sdmx.source import NoSource
 
 import logging
 
-from .context import SdmxContext
+from .context import SdmxContext, SdmxContextError
 from .display import CONSOLE
-from .query import QUERIES_PATH, save_query
+from .query import QUERIES_PATH, save_path
 
 
 log = logging.getLogger(__name__)
@@ -35,6 +35,8 @@ class SdmxRepl:
                 self.run_command(command)
             except KeyboardInterrupt:
                 self.console.print("Interrupted")
+            except SdmxContextError as err:
+                self._print_error(str(err))
             except Exception as err:
                 if self.verbose:
                     self.console.print_exception(show_locals=True)
@@ -138,10 +140,6 @@ class SdmxRepl:
             "save, s",
             "Save the current query",
         )
-        table.add_row(
-            "<INDEX>, <ID>",
-            f"Select a {child}",
-        )
 
         # Display table.
         self._print_table(table)
@@ -170,7 +168,7 @@ class SdmxRepl:
 
     def do_info(self):
         if self.ctx.client.source is NoSource:
-            self._print_error("Nothing is selected.")
+            self._print_error("Nothing is selected")
             return
 
         # Define table.
@@ -441,7 +439,7 @@ class SdmxRepl:
     def do_preview(self):
         if self.ctx.version().value < 3:
             self._print_error(
-                f"[source]{escape(self.ctx.client.source.id)}[/] does not support previewing data."
+                f"[source]{escape(self.ctx.client.source.id)}[/] does not support previewing data"
             )
             return
 
@@ -450,23 +448,54 @@ class SdmxRepl:
 
     def do_save(self):
         query = self.ctx.query()
-        save_query(query)
+        save_path(query)
         self.console.print(f"Saved {query.to_str(rich=True)} to {QUERIES_PATH}")
 
     def do_select(self, key):
+        absolute = False
+        if key.startswith("/"):
+            absolute = True
+            key = key[1:]
+            maxsplit = 3
+        elif self.ctx.client.source is NoSource:
+            maxsplit = 3
+        elif self.ctx.dataflow is None:
+            maxsplit = 2
+        elif self.dimension is None:
+            maxsplit = 1
+        else:
+            maxsplit = 0
+        split = key.split("/", maxsplit=maxsplit)
+        if "/" in split[-1]:
+            self._print_error(
+                f'Selection "{key}" is too deep (expected at most {maxsplit + 1} part{"" if maxsplit == 0 else "s"})'
+            )
+            return
+
+        if absolute:
+            self.ctx.reset()
+            self.dimension = None
+            if not key:
+                return
+        for key in split:
+            if not self._select(key):
+                break
+
+    def _select(self, key):
         try:
             key = int(key)
         except ValueError:
             pass
 
         if self.ctx.client.source is NoSource:
-            self._select_source(key)
+            return self._select_source(key)
         elif self.ctx.dataflow is None:
-            self._select_dataflow(key)
+            return self._select_dataflow(key)
         elif self.dimension is None:
-            self._select_dimension(key)
+            return self._select_dimension(key)
         else:
-            self._select_code(key)
+            self._select_codes(key)
+            return True
 
     def _select_source(self, key):
         try:
@@ -482,6 +511,8 @@ class SdmxRepl:
             self.console.print(
                 f"Selected source: [source]{escape(self.ctx.client.source.id)}[/]"
             )
+            return True
+        return False
 
     def _select_dataflow(self, key):
         try:
@@ -499,6 +530,8 @@ class SdmxRepl:
             self.console.print(
                 f"Selected dataflow: [dataflow]{escape(self.ctx.dataflow.id)}[/]"
             )
+            return True
+        return False
 
     def _select_dimension(self, key):
         try:
@@ -514,15 +547,22 @@ class SdmxRepl:
             self.console.print(
                 f"Selected dimension: [dimension]{escape(dimension.id)}[/]"
             )
+            return True
+        return False
 
-    def _select_code(self, key):
-        if key == "*":
+    def _select_codes(self, key):
+        split = list(dict.fromkeys(key.split("+")))
+        if any(x == "*" for x in split):
             self.ctx.clear_codes(self.dimension)
             self.console.print(
                 f"Cleared all codes from [dimension]{self.dimension.id}[/]"
             )
             return
 
+        for key in split:
+            self._select_code(key)
+
+    def _select_code(self, key):
         try:
             code = self.ctx.to_code(self.dimension, key)
         except KeyError:
@@ -540,6 +580,8 @@ class SdmxRepl:
                 self.console.print(
                     f"Removed [code]{escape(code.id)}[/] from [dimension]{escape(self.dimension.id)}"
                 )
+            return True
+        return False
 
     def _suggest_commands(self):
         commands = ["help", "quit", "list"]

@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 
-QUERIES_PATH: Path = Path("queries.txt")
+QUERIES_PATH: Path = Path(__file__).parent.parent.parent / "queries.txt"
 
 
 class Query(NamedTuple):
