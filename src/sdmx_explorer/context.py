@@ -16,7 +16,7 @@ class SdmxContext:
         self.key_codes = None
 
     def __repr__(self):
-        return f'{self.__class__.__name__}(path="{self.path()})"'
+        return f"{self.__class__.__name__}(path={self.path().to_str()!r})"
 
     def to_source(self, source):
         if isinstance(source, sdmx.source.Source):

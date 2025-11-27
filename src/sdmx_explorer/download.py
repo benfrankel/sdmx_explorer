@@ -1,75 +1,192 @@
 import numpy as np
 import pandas as pd
 import sdmx
+import yaml
 
+import argparse
+from dataclasses import dataclass, field
 from pathlib import Path
+import tomllib
 
 from . import auth
 from .context import SdmxContext
 from .display import CONSOLE
-from .path import SdmxQuery, load_bookmarks
-
-
-CACHE_DIR: Path = Path(__file__).parent.parent.parent / "cache"
-DEFAULT_DOWNLOAD_PATH: Path = Path("download.tsv")
+from .path import SdmxQuery
 
 
 def main():
-    try:
-        download()
-    except KeyboardInterrupt:
-        print("Interrupted")
-
-
-def download():
     console = CONSOLE
-    ctx = SdmxContext(client=auth.client(), console=console)
+
+    parser = argparse.ArgumentParser(
+        add_help=False,
+        usage="download [-v|--verbose] <DOWNLOAD_CONFIG_PATH>...",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        default=False,
+        help="Output additional information for debugging purposes.",
+    )
+    parser.add_argument(
+        "-h",
+        "--help",
+        action="help",
+        default=argparse.SUPPRESS,
+        help="Show this message.",
+    )
+    parser.add_argument(
+        dest="paths",
+        metavar="DOWNLOAD_CONFIG_PATH",
+        type=Path,
+        nargs="+",
+        help=argparse.SUPPRESS,
+    )
+    args = parser.parse_args()
 
     # TODO: Actually fix the warning instead of suppressing it.
-    sdmx.log.setLevel(100)
+    if not args.verbose:
+        sdmx.log.setLevel(100)
 
-    download = []
-    for path in load_bookmarks():
-        path_str = path.to_str(rich=True)
-        with console.status(f"Downloading {path_str}"):
+    try:
+        ctx = SdmxContext(client=auth.client(), console=console)
+        for path in args.paths:
+            config = DownloadConfig.load(path)
+            config.download(ctx=ctx, verbose=args.verbose)
+    except KeyboardInterrupt:
+        console.print("Interrupted")
+        return 130
+    except Exception as err:
+        if args.verbose:
+            console.print_exception(show_locals=True)
+        else:
+            console.print(f"[error]Error:[/] {err}", highlight=True)
+        return getattr(err, "errno", 1)
+
+
+@dataclass(frozen=True)
+class DownloadConfig:
+    output_path: Path
+    queries: list[SdmxQuery]
+    drop_columns: list[str] = field(default_factory=list)
+    drop_attributes: bool = False
+    pivot_table: bool = False
+    use_cache: bool = True
+
+    @classmethod
+    def load(cls, path: Path) -> "DownloadConfig":
+        match path.suffix:
+            case ".toml":
+                with open(path) as f:
+                    data = tomllib.load(f)
+            case ".yaml":
+                with open(path) as f:
+                    data = yaml.safe_load(f)
+            case _:
+                raise ValueError(
+                    f"Unsupported file extension for download configuration file {str(path)!r} (expected '.toml' or '.yaml'; got {path.suffix!r})"
+                )
+
+        required_fields = ["output_path", "queries"]
+        for key in required_fields:
+            if key not in data:
+                raise TypeError(
+                    f"Download configuration file {str(path)!r} is missing a required field: {key!r}"
+                )
+        expected_fields = {
+            "output_path": str,
+            "queries": list,
+            "drop_columns": list,
+            "drop_attributes": bool,
+            "pivot_table": bool,
+            "use_cache": bool,
+        }
+        for key, value in data.items():
+            if key not in expected_fields:
+                raise TypeError(
+                    f"Download configuration file {str(path)!r} has an unexpected field: {key!r}"
+                )
+            expected_type = expected_fields[key]
+            if not isinstance(value, expected_type):
+                raise TypeError(
+                    f"Download configuration file {str(path)!r} has field {key!r} of the wrong type (expected {expected_type.__name__!r}; got {type(value).__name__!r})"
+                )
+
+        data["output_path"] = path.parent / data["output_path"]
+        data["queries"] = [SdmxQuery.from_str(query) for query in data["queries"]]
+
+        return cls(**data)
+
+    def download(self, ctx=None, verbose=False):
+        if ctx is None:
+            ctx = SdmxContext(client=auth.client(), console=CONSOLE)
+
+        download = []
+        for query in self.queries:
             try:
-                ctx.select_path(path)
-                df: pd.DataFrame = ctx.data()
-            except Exception:
-                # TODO: Put this behind a verbose flag.
-                console.print_exception(show_locals=True)
-                continue
+                query_str = query.to_str(rich=True)
+                with ctx.console.status(f"Downloading {query_str}"):
+                    ctx.select_path(query)
+                    df: pd.DataFrame = ctx.data()
 
-        if df is None:
-            console.print(f"[warning]Warning:[/] No results for {path_str}")
-            continue
+                if df is None:
+                    ctx.console.print(
+                        f"[warning]Warning:[/] No results for {query_str}"
+                    )
+                    continue
 
-        # TODO: Make this optional.
-        # Prune unimportant columns to reduce file size.
-        to_drop = set(df.columns.tolist())
-        to_drop.difference_update(x.id for x in ctx.dimensions())
-        to_drop.remove("value")
-        to_drop.add("FREQUENCY")
-        df = df.drop(columns=to_drop)
+                # Cache the query result.
+                if self.use_cache:
+                    save_as(df, cache_path(query))
 
-        # TODO: Make this optional.
-        # Cache the query result.
-        save_as(df, cache_path(path))
-        console.print(f"Downloaded {len(df)} rows for {path_str}", highlight=True)
+                ctx.console.print(
+                    f"Downloaded {len(df)} rows for {query_str}", highlight=True
+                )
 
-        df.insert(0, "SOURCE_ID", path.source)
-        df.insert(1, "DATAFLOW_ID", path.dataflow)
-        download.append(df)
+                # Drop attribute columns.
+                if self.drop_attributes:
+                    dimensions = set(x.id for x in ctx.dimensions())
+                    measures = {"value"}
+                    attributes = set(df.columns) - dimensions - measures
+                    df = df.drop(columns=attributes)
 
-    # Save the entire download in a single file.
-    if download:
-        df = pd.concat(download, ignore_index=True).drop_duplicates()
-        df = pivot(df)
-        columns = ["SOURCE_ID", "DATAFLOW_ID"] + [
-            x for x in df.columns.tolist() if x != "SOURCE_ID" and x != "DATAFLOW_ID"
-        ]
-        df = df[columns]
-        save_as(df, DEFAULT_DOWNLOAD_PATH)
+                # Add columns for the SDMX source and dataflow.
+                df.insert(0, "SOURCE_ID", query.source)
+                df.insert(1, "DATAFLOW_ID", query.dataflow)
+
+                # Add query result to download.
+                download.append(df)
+            except Exception as err:
+                if verbose:
+                    ctx.console.print_exception(show_locals=True)
+                else:
+                    ctx.console.print(
+                        f"[error]Error:[/] During {query_str}: {err!r}", highlight=True
+                    )
+
+        # Save the entire download in a single file.
+        if download:
+            df = pd.concat(download, ignore_index=True).drop_duplicates()
+
+            # Pivot table so each row is an entire time series.
+            if self.pivot_table:
+                df = pivot(df)
+
+            # Rearrange so that source and dataflow are the first two columns.
+            PREFIX_COLS = ["SOURCE_ID", "DATAFLOW_ID"]
+            other_cols = [x for x in df.columns if x not in PREFIX_COLS]
+            df = df[PREFIX_COLS + other_cols]
+
+            # TODO: Helpful warning message if some columns are already missing (it might be a typo).
+            # Drop unwanted columns.
+            df = df.drop(columns=self.drop_columns, errors="ignore")
+
+            # Save the result.
+            save_as(df, self.output_path)
+            # TODO: Print total number of rows and output file path.
+        else:
+            # TODO: Print warning.
+            pass
 
 
 def pivot(df: pd.DataFrame) -> pd.DataFrame:
@@ -80,7 +197,7 @@ def pivot(df: pd.DataFrame) -> pd.DataFrame:
     return (
         df.fillna(NAN_MARKER)
         .pivot_table(
-            index=set(df.columns.tolist()).difference([TIME, VALUE]),
+            index=set(df.columns).difference([TIME, VALUE]),
             columns=TIME,
             values=VALUE,
         )
@@ -93,6 +210,8 @@ def save_as(df: pd.DataFrame, path: Path):
     """Save a table to a given file path with an inferred format."""
     path.parent.mkdir(parents=True, exist_ok=True)
     match path.suffix:
+        case ".tsv":
+            df.to_csv(path, sep="\t", index=False)
         case ".csv":
             df.to_csv(path, index=False)
         case ".xlsx" | ".xls":
@@ -112,9 +231,12 @@ def save_as(df: pd.DataFrame, path: Path):
         case ".dta":
             df.to_stata(path, index=False)
         case _:
-            df.to_csv(path, sep="\t", index=False)
+            raise ValueError(
+                f"Unsupported file extension for tabular data: {str(path)!r}"
+            )
 
 
 def cache_path(query: SdmxQuery) -> Path:
     """Get the file path where an SDMX query should be cached."""
+    CACHE_DIR: Path = Path(__file__).parent.parent.parent / "cache"
     return CACHE_DIR / query.source / query.dataflow / f"{query.key}.tsv"

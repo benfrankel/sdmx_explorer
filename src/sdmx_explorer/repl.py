@@ -128,7 +128,7 @@ class SdmxRepl:
         # TODO: Maybe `..` as an alias.
         table.add_row(
             "back, b",
-            "Navigate back",
+            "Navigate back one step",
         )
         table.add_row(
             "list, l",
