@@ -8,7 +8,7 @@ import logging
 
 from .context import SdmxContext, SdmxContextError
 from .display import CONSOLE
-from .query import QUERIES_PATH, save_path
+from .path import BOOKMARKS_PATH, save_bookmark
 
 
 log = logging.getLogger(__name__)
@@ -45,8 +45,13 @@ class SdmxRepl:
             self.console.print()
 
     def prompt(self):
-        path = self.ctx.path(rich=True, selected_dimension=self.dimension)
-        prefix = f"{path}> "
+        if self.dimension is not None:
+            dimension_idx = self.ctx.key_dimensions().index(self.dimension)
+            dimensions = {dimension_idx: self.dimension.id}
+        else:
+            dimensions = None
+        path = self.ctx.path().to_str(rich=True, dimensions=dimensions)
+        prefix = f"/{path}> "
 
         try:
             return self.console.input(prefix).strip()
@@ -120,6 +125,7 @@ class SdmxRepl:
             "quit, q",
             "Quit the session [dim](aliases: exit, end, stop)[/]",
         )
+        # TODO: Maybe `..` as an alias.
         table.add_row(
             "back, b",
             "Navigate back",
@@ -130,15 +136,15 @@ class SdmxRepl:
         )
         table.add_row(
             "info, i",
-            "Show information on the current selection",
+            "Show information on the current path",
         )
         # table.add_row(
         #    "preview, p",
-        #    "Preview data from the current query",
+        #    "Preview data at the current query",
         # )
         table.add_row(
             "save, s",
-            "Save the current query",
+            "Save the current path as a bookmark",
         )
 
         # Display table.
@@ -201,7 +207,7 @@ class SdmxRepl:
         # Populate table.
         if self.ctx.dataflow is not None:
             url = self.ctx.url()
-            path = self.ctx.path(rich=True)
+            path = self.ctx.path().to_str(rich=True)
             table.add_row(
                 "Query",
                 "",
@@ -447,9 +453,9 @@ class SdmxRepl:
         self.console.print(df)
 
     def do_save(self):
-        query = self.ctx.query()
-        save_path(query)
-        self.console.print(f"Saved {query.to_str(rich=True)} to {QUERIES_PATH}")
+        path = self.ctx.path()
+        save_bookmark(path)
+        self.console.print(f"Saved {path.to_str(rich=True)} to {BOOKMARKS_PATH}")
 
     def do_select(self, key):
         absolute = False
@@ -468,7 +474,7 @@ class SdmxRepl:
         split = key.split("/", maxsplit=maxsplit)
         if "/" in split[-1]:
             self._print_error(
-                f'Selection "{key}" is too deep (expected at most {maxsplit + 1} part{"" if maxsplit == 0 else "s"})'
+                f'Selection path "{key}" is too deep (expected at most {maxsplit + 1} part{"" if maxsplit == 0 else "s"})'
             )
             return
 
@@ -492,7 +498,10 @@ class SdmxRepl:
         elif self.ctx.dataflow is None:
             return self._select_dataflow(key)
         elif self.dimension is None:
-            return self._select_dimension(key)
+            if isinstance(key, str) and "." in key:
+                return self._select_key(key)
+            else:
+                return self._select_dimension(key)
         else:
             self._select_codes(key)
             return True
@@ -550,35 +559,62 @@ class SdmxRepl:
             return True
         return False
 
-    def _select_codes(self, key):
-        split = list(dict.fromkeys(key.split("+")))
-        if any(x == "*" for x in split):
-            self.ctx.clear_codes(self.dimension)
-            self.console.print(
-                f"Cleared all codes from [dimension]{self.dimension.id}[/]"
+    def _select_key(self, key):
+        key_dimensions = self.ctx.key_dimensions()
+        split = key.split(".", maxsplit=len(key_dimensions))
+        if len(split) != len(key_dimensions) or "." in split[-1]:
+            self._print_error(
+                f'Key "{key}" has the wrong number of dimensions (should be {len(key_dimensions)})'
             )
             return
 
-        for key in split:
-            self._select_code(key)
+        if self.ctx.key_codes:
+            self.ctx.key_codes.clear()
+            self.console.print("Cleared key")
+        for dimension, codes in zip(key_dimensions, split):
+            if "*" in codes.split("+"):
+                continue
+            self._select_codes(key=codes, dimension=dimension)
 
-    def _select_code(self, key):
+    def _select_codes(self, key, dimension=None):
+        if dimension is None:
+            dimension = self.dimension
+
+        split = list(dict.fromkeys(key.split("+")))
+        if any(x == "*" for x in split):
+            self.ctx.clear_codes(dimension)
+            self.console.print(f"Cleared all codes from [dimension]{dimension.id}[/]")
+            return
+
+        for key in split:
+            try:
+                key = int(key)
+            except ValueError:
+                pass
+            self._select_code(key, dimension=dimension)
+
+    def _select_code(self, key, dimension=None):
+        if dimension is None:
+            dimension = self.dimension
+
         try:
-            code = self.ctx.to_code(self.dimension, key)
+            code = self.ctx.to_code(dimension, key)
         except KeyError:
-            self._print_error(f'No code found with ID "{escape(key)}"')
+            self._print_error(
+                f'No [dimension]{escape(dimension.id)}[/] code found with ID "{escape(key)}"'
+            )
         except IndexError:
             self._print_error(
-                f"No code found at index {key} (should be in range 0-{len(self.ctx.codes(self.dimension)) - 1})"
+                f"No [dimension]{escape(dimension.id)}[/] code found at index {key} (should be in range 0-{len(self.ctx.codes(dimension)) - 1})"
             )
         else:
-            if self.ctx.toggle_code(self.dimension, code):
+            if self.ctx.toggle_code(dimension, code):
                 self.console.print(
-                    f"Added [code]{escape(code.id)}[/] to [dimension]{escape(self.dimension.id)}"
+                    f"Added [code]{escape(code.id)}[/] to [dimension]{escape(dimension.id)}"
                 )
             else:
                 self.console.print(
-                    f"Removed [code]{escape(code.id)}[/] from [dimension]{escape(self.dimension.id)}"
+                    f"Removed [code]{escape(code.id)}[/] from [dimension]{escape(dimension.id)}"
                 )
             return True
         return False

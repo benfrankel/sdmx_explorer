@@ -7,7 +7,7 @@ from pathlib import Path
 from . import auth
 from .context import SdmxContext
 from .display import CONSOLE
-from .query import load_paths
+from .path import SdmxQuery, load_bookmarks
 
 
 CACHE_DIR: Path = Path(__file__).parent.parent.parent / "cache"
@@ -29,11 +29,11 @@ def download():
     sdmx.log.setLevel(100)
 
     download = []
-    for query in load_paths():
-        query_str = query.to_str(rich=True)
-        with console.status(f"Downloading {query_str}"):
+    for path in load_bookmarks():
+        path_str = path.to_str(rich=True)
+        with console.status(f"Downloading {path_str}"):
             try:
-                ctx.select_query(query)
+                ctx.select_path(path)
                 df: pd.DataFrame = ctx.data()
             except Exception:
                 # TODO: Put this behind a verbose flag.
@@ -41,7 +41,7 @@ def download():
                 continue
 
         if df is None:
-            console.print(f"[warning]Warning:[/] No results for {query_str}")
+            console.print(f"[warning]Warning:[/] No results for {path_str}")
             continue
 
         # TODO: Make this optional.
@@ -54,11 +54,11 @@ def download():
 
         # TODO: Make this optional.
         # Cache the query result.
-        save_as(df, cache_path(query))
-        console.print(f"Downloaded {len(df)} rows for {query_str}", highlight=True)
+        save_as(df, cache_path(path))
+        console.print(f"Downloaded {len(df)} rows for {path_str}", highlight=True)
 
-        df.insert(0, "SOURCE_ID", query.source)
-        df.insert(1, "DATAFLOW_ID", query.dataflow)
+        df.insert(0, "SOURCE_ID", path.source)
+        df.insert(1, "DATAFLOW_ID", path.dataflow)
         download.append(df)
 
     # Save the entire download in a single file.
@@ -72,7 +72,7 @@ def download():
         save_as(df, DEFAULT_DOWNLOAD_PATH)
 
 
-def pivot(df):
+def pivot(df: pd.DataFrame) -> pd.DataFrame:
     """Pivot a table so that each row represents an entire time series."""
     TIME = "TIME_PERIOD"
     VALUE = "value"
@@ -89,7 +89,7 @@ def pivot(df):
     )
 
 
-def save_as(df, path):
+def save_as(df: pd.DataFrame, path: Path):
     """Save a table to a given file path with an inferred format."""
     path.parent.mkdir(parents=True, exist_ok=True)
     match path.suffix:
@@ -115,5 +115,6 @@ def save_as(df, path):
             df.to_csv(path, sep="\t", index=False)
 
 
-def cache_path(query):
+def cache_path(query: SdmxQuery) -> Path:
+    """Get the file path where an SDMX query should be cached."""
     return CACHE_DIR / query.source / query.dataflow / f"{query.key}.tsv"

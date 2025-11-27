@@ -200,7 +200,7 @@ IMF_DATA/CPI/COUNTRY=USA.*.*.*.*>
 You can select another `COUNTRY` code to add it to the key, or select the same code again to remove it from the key.
 You can also enter `*` to clear any selected codes and return to matching anything.
 
-Once you're satisfied with the key, enter `save` to save the query you've constructed to `queries.txt`:
+Once you're satisfied with the key, enter `save` to bookmark the query you've constructed to `bookmarks.txt`:
 
 ```
 Commands: help, quit, list, info, back, save

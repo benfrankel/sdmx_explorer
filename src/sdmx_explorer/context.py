@@ -3,7 +3,7 @@ import sdmx
 from sdmx.model import TimeDimension
 from sdmx.source import NoSource
 
-from .query import SdmxPath
+from .path import SdmxPath
 
 
 class SdmxContext:
@@ -16,7 +16,7 @@ class SdmxContext:
         self.key_codes = None
 
     def __repr__(self):
-        return f"{self.__class__.__name__}(path={self.path()!r})"
+        return f'{self.__class__.__name__}(path="{self.path()})"'
 
     def to_source(self, source):
         if isinstance(source, sdmx.source.Source):
@@ -104,27 +104,30 @@ class SdmxContext:
             return False
         return True
 
-    def select_query(self, query):
+    def select_path(self, path: SdmxPath):
         old_source = self.client.source
         old_dataflow = self.dataflow
         old_key_codes = self.key_codes
         try:
-            self.select_source(query.source)
-            self.select_dataflow(query.dataflow)
-            self.key_codes = dict()
-
-            key_dimensions = self.key_dimensions()
-            key_codes = query.key.split(".")
-            if len(key_codes) != len(key_dimensions):
-                raise ValueError(
-                    f"Query key has {len(key_codes)} dimensions; expected {len(key_dimensions)}"
-                )
-            for dimension, codes in zip(key_dimensions, key_codes):
-                if codes == "*":
-                    continue
-                self.key_codes[dimension] = set(
-                    self.to_code(dimension, code) for code in codes.split("+")
-                )
+            if path.source is not None:
+                self.select_source(path.source)
+                if path.dataflow is not None:
+                    self.select_dataflow(path.dataflow)
+                    if path.key is not None:
+                        self.key_codes = dict()
+                        key_dimensions = self.key_dimensions()
+                        key_codes = path.key.split(".")
+                        if len(key_codes) != len(key_dimensions):
+                            raise ValueError(
+                                f"Key has {len(key_codes)} dimensions; expected {len(key_dimensions)}"
+                            )
+                        for dimension, codes in zip(key_dimensions, key_codes):
+                            if codes == "*":
+                                continue
+                            self.key_codes[dimension] = set(
+                                self.to_code(dimension, code)
+                                for code in codes.split("+")
+                            )
         except BaseException:
             self.client.source = old_source
             self.dataflow = old_dataflow
@@ -167,52 +170,28 @@ class SdmxContext:
         )
         return req.url
 
-    def path(self, rich=False, selected_dimension=None):
-        parts = []
-        if self.client.source is not NoSource:
-            id = self.client.source.id
-            parts.append(f"[source]{escape(id)}[/]" if rich else id)
-        if self.dataflow is not None:
-            id = self.dataflow.id
-            parts.append(f"[dataflow]{escape(id)}[/]" if rich else id)
-            parts.append(self.key(rich=rich, selected_dimension=selected_dimension))
-        return "/" + "/".join(parts)
-
-    def query(self):
-        key = self.key()
+    def path(self):
         return SdmxPath(
-            source=self.client.source.id,
-            dataflow=self.dataflow.id,
-            key=key,
+            source=None if self.client.source is NoSource else self.client.source.id,
+            dataflow=None if self.dataflow is None else self.dataflow.id,
+            key=None if self.dataflow is None else self.key(),
         )
 
-    def key(self, rich=False, selected_dimension=None):
+    def key(self):
         dsd = self.datastructure()
-        dimensions = []
+        parts = []
         for dimension in dsd.dimensions.components:
             if isinstance(dimension, TimeDimension):
                 continue
 
-            codes = sorted(self.key_codes.get(dimension.id, set()))
-            if codes:
-                s = "+".join(
-                    f"[code]{escape(code.id)}[/]" if rich else code.id for code in codes
-                )
+            codes = self.key_codes.get(dimension.id)
+            if codes is not None:
+                part = "+".join(code.id for code in sorted(codes))
             else:
-                s = "*"
+                part = "*"
 
-            # Show the selected dimension.
-            if selected_dimension is not None:
-                selected_dimension = self.to_key_dimension(selected_dimension)
-            if selected_dimension is not None and dimension.id == selected_dimension.id:
-                s = (
-                    f"[u][dimension]{escape(dimension.id)}[/]={s}[/]"
-                    if rich
-                    else f"{dimension.id}={s}"
-                )
-
-            dimensions.append(s)
-        return ".".join(dimensions)
+            parts.append(part)
+        return ".".join(parts)
 
     def version(self):
         if self.client.source is NoSource:
