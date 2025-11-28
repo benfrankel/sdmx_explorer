@@ -166,7 +166,15 @@ class DownloadConfig:
             raise IsADirectoryError(
                 f"Download configuration file {str(path)!r} output path {str(data['output_path'])!r} already exists as a directory"
             )
-        data["queries"] = [SdmxQuery.from_str(query) for query in data["queries"]]
+        queries = []
+        for query in data["queries"]:
+            try:
+                queries.append(SdmxQuery.from_str(query))
+            except ValueError as err:
+                raise ValueError(
+                    f"Download configuration file {str(path)!r} query {query!r} is invalid: {err}"
+                )
+        data["queries"] = queries
 
         return cls(**data)
 

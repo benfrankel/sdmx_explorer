@@ -62,12 +62,12 @@ class SdmxQuery(SdmxPath):
 
     def __post_init__(self):
         super().__post_init__()
-        if not isinstance(self.source, str):
-            raise TypeError(f"Source must be a string: {self.source!r}")
-        if not isinstance(self.dataflow, str):
-            raise TypeError(f"Dataflow must be a string: {self.dataflow!r}")
-        if not isinstance(self.key, str):
-            raise TypeError(f"Key must be a string: {self.key!r}")
+        if not self.source:
+            raise ValueError("No source")
+        if not self.dataflow:
+            raise ValueError("No dataflow")
+        if not self.key:
+            raise ValueError("No key")
 
 
 BOOKMARKS_PATH: Path = Path(__file__).parent.parent.parent / "bookmarks.txt"
