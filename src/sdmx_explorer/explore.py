@@ -8,16 +8,19 @@ from .repl import SdmxRepl
 
 def main():
     try:
-        repl = SdmxRepl(
-            client=sdmx.Client(
-                backend=requests_cache.SQLiteCache(
-                    db_path=__package__,
-                    use_cache_dir=True,
-                ),
-                expire_after=timedelta(days=1),
-            )
-        )
+        _main()
     except KeyboardInterrupt:
         print("Interrupted")
-    else:
-        repl.run()
+        return 130
+
+
+def _main():
+    SdmxRepl(
+        client=sdmx.Client(
+            backend=requests_cache.SQLiteCache(
+                db_path=__package__,
+                use_cache_dir=True,
+            ),
+            expire_after=timedelta(days=1),
+        )
+    ).run()

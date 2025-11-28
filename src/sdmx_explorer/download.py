@@ -16,6 +16,14 @@ from .path import SdmxQuery
 
 
 def main():
+    try:
+        return _main()
+    except KeyboardInterrupt:
+        print("Interrupted")
+        return 130
+
+
+def _main():
     console = CONSOLE
 
     parser = argparse.ArgumentParser(
@@ -49,11 +57,26 @@ def main():
     if not args.verbose:
         sdmx.log.setLevel(100)
 
-    # TODO: Warn if the same download config appears twice.
-    # TODO: Warn if the same query appears twice in the same download config.
+    for path in duplicates(args.paths):
+        console.print(
+            f"[warning]Warning:[/] Download configuration file {escape(repr(str(path)))} appears multiple times",
+            highlight=True,
+        )
+
     try:
         ctx = SdmxContext(client=auth.client(), console=console)
         configs = [(path, DownloadConfig.load(path)) for path in args.paths]
+
+        seen = set()
+        for path, config in configs:
+            if path in seen:
+                continue
+            seen.add(path)
+            for query in duplicates(config.queries):
+                console.print(
+                    f"[warning]Warning:[/] Download configuration file {escape(repr(str(path)))} query appears multiple times: {query.to_str(rich=True)}",
+                    highlight=True,
+                )
 
         console.rule()
         for path, config in configs:
@@ -63,9 +86,6 @@ def main():
             )
             config.download(ctx=ctx, verbose=args.verbose)
             console.rule()
-    except KeyboardInterrupt:
-        console.print("Interrupted")
-        return 130
     except Exception as err:
         if args.verbose:
             console.print_exception(show_locals=True)
@@ -83,6 +103,30 @@ class DownloadConfig:
     pivot_table: bool = False
     use_cache: bool = True
 
+    REQUIRED_FIELDS = ["output_path", "queries"]
+    EXPECTED_FIELDS = {
+        "output_path": str,
+        "queries": list,
+        "drop_columns": list,
+        "drop_attributes": bool,
+        "pivot_table": bool,
+        "use_cache": bool,
+    }
+    SUPPORTED_TABLE_EXTENSIONS = {
+        ".tsv",
+        ".csv",
+        ".xlsx",
+        "xls",
+        ".html",
+        ".json",
+        ".parquet",
+        ".feather",
+        ".pkl",
+        ".pickle",
+        ".tex",
+        ".dta",
+    }
+
     @classmethod
     def load(cls, path: Path) -> "DownloadConfig":
         match path.suffix:
@@ -97,32 +141,31 @@ class DownloadConfig:
                     f"Download configuration file {str(path)!r} uses an unsupported file extension: {path.suffix!r} (should be '.toml' or '.yaml')"
                 )
 
-        required_fields = ["output_path", "queries"]
-        for key in required_fields:
+        for key in cls.REQUIRED_FIELDS:
             if key not in data:
                 raise TypeError(
                     f"Download configuration file {str(path)!r} is missing a required field: {key!r}"
                 )
-        expected_fields = {
-            "output_path": str,
-            "queries": list,
-            "drop_columns": list,
-            "drop_attributes": bool,
-            "pivot_table": bool,
-            "use_cache": bool,
-        }
         for key, value in data.items():
-            if key not in expected_fields:
+            if key not in cls.EXPECTED_FIELDS:
                 raise TypeError(
                     f"Download configuration file {str(path)!r} has an unexpected field: {key!r}"
                 )
-            expected_type = expected_fields[key]
+            expected_type = cls.EXPECTED_FIELDS[key]
             if not isinstance(value, expected_type):
                 raise TypeError(
                     f"Download configuration file {str(path)!r} field {key!r} has the wrong type: {type(value).__name__!r} (should be {expected_type.__name__!r})"
                 )
 
         data["output_path"] = path.parent / data["output_path"]
+        if data["output_path"].suffix not in cls.SUPPORTED_TABLE_EXTENSIONS:
+            raise TypeError(
+                f"Download configuration file {str(path)!r} output path {str(data['output_path'])!r} has an unsupported file extension for tabular data: {data['output_path'].suffix!r}"
+            )
+        if data["output_path"].is_dir():
+            raise IsADirectoryError(
+                f"Download configuration file {str(path)!r} output path {str(data['output_path'])!r} already exists as a directory"
+            )
         data["queries"] = [SdmxQuery.from_str(query) for query in data["queries"]]
 
         return cls(**data)
@@ -293,3 +336,13 @@ def cache_path(query: SdmxQuery) -> Path:
     """Get the file path where an SDMX query should be cached."""
     CACHE_DIR: Path = Path(__file__).parent.parent.parent / "cache"
     return CACHE_DIR / query.source / query.dataflow / f"{query.key}.tsv"
+
+
+def duplicates(items):
+    seen = set()
+    duplicates = set()
+    for item in items:
+        if item in seen and item not in duplicates:
+            duplicates.add(item)
+            yield item
+        seen.add(item)
