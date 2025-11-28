@@ -114,20 +114,7 @@ class SdmxContext:
                 if path.dataflow is not None:
                     self.select_dataflow(path.dataflow)
                     if path.key is not None:
-                        self.key_codes = dict()
-                        key_dimensions = self.key_dimensions()
-                        key_codes = path.key.split(".")
-                        if len(key_codes) != len(key_dimensions):
-                            raise ValueError(
-                                f"Key has {len(key_codes)} dimensions; expected {len(key_dimensions)}"
-                            )
-                        for dimension, codes in zip(key_dimensions, key_codes):
-                            if codes == "*":
-                                continue
-                            self.key_codes[dimension] = set(
-                                self.to_code(dimension, code)
-                                for code in codes.split("+")
-                            )
+                        self.select_key(path.key)
         except BaseException:
             self.client.source = old_source
             self.dataflow = old_dataflow
@@ -144,6 +131,21 @@ class SdmxContext:
 
         self.dataflow = self.to_dataflow(dataflow)
         self.key_codes = dict()
+
+    def select_key(self, key: str):
+        self.key_codes = dict()
+        key_dimensions = self.key_dimensions()
+        key_codes = key.split(".")
+        if len(key_codes) != len(key_dimensions):
+            raise ValueError(
+                f"Key {key!r} has the wrong number of dimensions: {len(key_codes)} (should be {len(key_dimensions)})"
+            )
+        for dimension, codes in zip(key_dimensions, key_codes):
+            if codes == "*":
+                continue
+            self.key_codes[dimension] = set(
+                self.to_code(dimension, code) for code in codes.split("+")
+            )
 
     def toggle_code(self, dimension, code):
         if self.dataflow is None:

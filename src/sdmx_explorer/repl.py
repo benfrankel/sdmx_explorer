@@ -474,7 +474,7 @@ class SdmxRepl:
         split = key.split("/", maxsplit=maxsplit)
         if "/" in split[-1]:
             self._print_error(
-                f'Selection path "{key}" is too deep (expected at most {maxsplit + 1} part{"" if maxsplit == 0 else "s"})'
+                f"Selection path {escape(repr(key))} is too deep (expected at most {maxsplit + 1} part{'' if maxsplit == 0 else 's'})"
             )
             return
 
@@ -510,7 +510,7 @@ class SdmxRepl:
         try:
             source = self.ctx.to_source(key)
         except KeyError:
-            self._print_error(f'No source found with ID "{escape(key)}"')
+            self._print_error(f"No source found with ID {escape(repr(key))}")
         except IndexError:
             self._print_error(
                 f"No source found at index {key} (should be in range 0-{len(self.ctx.sources()) - 1})"
@@ -527,7 +527,7 @@ class SdmxRepl:
         try:
             dataflow = self.ctx.to_dataflow(key)
         except KeyError:
-            self._print_error(f'No dataflow found with ID "{escape(key)}"')
+            self._print_error(f"No dataflow found with ID {escape(repr(key))}")
         except IndexError:
             self._print_error(
                 f"No dataflow found at index {key} (should be in range 0-{len(self.ctx.dataflows()) - 1})"
@@ -546,7 +546,7 @@ class SdmxRepl:
         try:
             dimension = self.ctx.to_key_dimension(key)
         except KeyError:
-            self._print_error(f'No dimension found with ID "{escape(key)}"')
+            self._print_error(f"No dimension found with ID {escape(repr(key))}")
         except IndexError:
             self._print_error(
                 f"No dimension found at index {key} (should be in range 0-{len(self.ctx.key_dimensions()) - 1})"
@@ -564,7 +564,7 @@ class SdmxRepl:
         split = key.split(".", maxsplit=len(key_dimensions))
         if len(split) != len(key_dimensions) or "." in split[-1]:
             self._print_error(
-                f'Key "{key}" has the wrong number of dimensions (should be {len(key_dimensions)})'
+                f"Key {escape(repr(key))} has the wrong number of dimensions (should be {len(key_dimensions)})"
             )
             return
 
@@ -583,7 +583,9 @@ class SdmxRepl:
         split = list(dict.fromkeys(key.split("+")))
         if any(x == "*" for x in split):
             self.ctx.clear_codes(dimension)
-            self.console.print(f"Cleared all codes from [dimension]{dimension.id}[/]")
+            self.console.print(
+                f"Cleared all codes from [dimension]{escape(dimension.id)}[/]"
+            )
             return
 
         for key in split:
@@ -601,7 +603,7 @@ class SdmxRepl:
             code = self.ctx.to_code(dimension, key)
         except KeyError:
             self._print_error(
-                f'No [dimension]{escape(dimension.id)}[/] code found with ID "{escape(key)}"'
+                f"No [dimension]{escape(dimension.id)}[/] code found with ID {escape(repr(key))}"
             )
         except IndexError:
             self._print_error(

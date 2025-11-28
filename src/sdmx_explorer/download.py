@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from rich.markup import escape
 import sdmx
 import yaml
 
@@ -48,11 +49,20 @@ def main():
     if not args.verbose:
         sdmx.log.setLevel(100)
 
+    # TODO: Warn if the same download config appears twice.
+    # TODO: Warn if the same query appears twice in the same download config.
     try:
         ctx = SdmxContext(client=auth.client(), console=console)
-        for path in args.paths:
-            config = DownloadConfig.load(path)
+        configs = [(path, DownloadConfig.load(path)) for path in args.paths]
+
+        console.rule()
+        for path, config in configs:
+            console.print(
+                f"[b]Starting download:[/] {escape(repr(str(path)))} -> {escape(repr(str(config.output_path)))}",
+                highlight=True,
+            )
             config.download(ctx=ctx, verbose=args.verbose)
+            console.rule()
     except KeyboardInterrupt:
         console.print("Interrupted")
         return 130
@@ -60,7 +70,7 @@ def main():
         if args.verbose:
             console.print_exception(show_locals=True)
         else:
-            console.print(f"[error]Error:[/] {err}", highlight=True)
+            console.print(f"[error]Error:[/] {escape(str(err))}", highlight=True)
         return getattr(err, "errno", 1)
 
 
@@ -84,7 +94,7 @@ class DownloadConfig:
                     data = yaml.safe_load(f)
             case _:
                 raise ValueError(
-                    f"Unsupported file extension for download configuration file {str(path)!r} (expected '.toml' or '.yaml'; got {path.suffix!r})"
+                    f"Download configuration file {str(path)!r} uses an unsupported file extension: {path.suffix!r} (should be '.toml' or '.yaml')"
                 )
 
         required_fields = ["output_path", "queries"]
@@ -109,7 +119,7 @@ class DownloadConfig:
             expected_type = expected_fields[key]
             if not isinstance(value, expected_type):
                 raise TypeError(
-                    f"Download configuration file {str(path)!r} has field {key!r} of the wrong type (expected {expected_type.__name__!r}; got {type(value).__name__!r})"
+                    f"Download configuration file {str(path)!r} field {key!r} has the wrong type: {type(value).__name__!r} (should be {expected_type.__name__!r})"
                 )
 
         data["output_path"] = path.parent / data["output_path"]
@@ -125,8 +135,40 @@ class DownloadConfig:
         for query in self.queries:
             try:
                 query_str = query.to_str(rich=True)
-                with ctx.console.status(f"Downloading {query_str}"):
-                    ctx.select_path(query)
+                with ctx.console.status(f"{query_str}"):
+                    try:
+                        ctx.select_source(query.source)
+                    except KeyError:
+                        ctx.console.print(
+                            f"[error]Error:[/] No source found with ID {escape(repr(query.source))} in {query_str}",
+                            highlight=True,
+                        )
+                        continue
+
+                    try:
+                        ctx.select_dataflow(query.dataflow)
+                    except KeyError:
+                        ctx.console.print(
+                            f"[error]Error:[/] No dataflow found with ID {escape(repr(query.dataflow))} in {query_str}",
+                            highlight=True,
+                        )
+                        continue
+
+                    try:
+                        ctx.select_key(query.key)
+                    except KeyError as err:
+                        ctx.console.print(
+                            f"[error]Error:[/] No code found with ID {escape(str(err))} in {query_str}",
+                            highlight=True,
+                        )
+                        continue
+                    except ValueError as err:
+                        ctx.console.print(
+                            f"[error]Error:[/] {escape(str(err))} in {query_str}",
+                            highlight=True,
+                        )
+                        continue
+
                     df: pd.DataFrame = ctx.data()
 
                 if df is None:
@@ -140,7 +182,7 @@ class DownloadConfig:
                     save_as(df, cache_path(query))
 
                 ctx.console.print(
-                    f"Downloaded {len(df)} rows for {query_str}", highlight=True
+                    f"Received {len(df)} rows from {query_str}", highlight=True
                 )
 
                 # Drop attribute columns.
@@ -161,10 +203,11 @@ class DownloadConfig:
                     ctx.console.print_exception(show_locals=True)
                 else:
                     ctx.console.print(
-                        f"[error]Error:[/] During {query_str}: {err!r}", highlight=True
+                        f"[error]Error:[/] {escape(repr(err))} while requesting {query_str}",
+                        highlight=True,
                     )
 
-        # Save the entire download in a single file.
+        # Save the combined download to the output path.
         if download:
             df = pd.concat(download, ignore_index=True).drop_duplicates()
 
@@ -177,16 +220,26 @@ class DownloadConfig:
             other_cols = [x for x in df.columns if x not in PREFIX_COLS]
             df = df[PREFIX_COLS + other_cols]
 
-            # TODO: Helpful warning message if some columns are already missing (it might be a typo).
             # Drop unwanted columns.
+            for column in self.drop_columns:
+                if column not in df.columns:
+                    ctx.console.print(
+                        f"[warning]Warning:[/] Cannot drop column {escape(repr(column))} that is already missing",
+                        highlight=True,
+                    )
             df = df.drop(columns=self.drop_columns, errors="ignore")
 
-            # Save the result.
+            # Save to output path.
             save_as(df, self.output_path)
-            # TODO: Print total number of rows and output file path.
+            ctx.console.print(
+                f"[b]Finished download:[/] Saved {len(df)} rows to {escape(repr(str(self.output_path)))}",
+                highlight=True,
+            )
         else:
-            # TODO: Print warning.
-            pass
+            ctx.console.print(
+                f"[warning]Warning:[/] Nothing to save to {escape(repr(str(self.output_path)))}",
+                highlight=True,
+            )
 
 
 def pivot(df: pd.DataFrame) -> pd.DataFrame:
