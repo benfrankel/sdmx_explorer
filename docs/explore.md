@@ -5,7 +5,7 @@ that allows you to explore the structure of SDMX dataflows and construct data qu
 
 ## Usage
 
-Run `explore` to launch the REPL and be greeted by the initial prompt:
+Run `explore` to launch the REPL. You will be greeted by the initial prompt:
 
 ```
 SDMX Explorer
@@ -13,14 +13,14 @@ Commands: help, quit, list
 > 
 ```
 
-Enter `help` to see the full list of commands.
-
 The basic workflow looks something like this:
 
 1. Enter `list` to see a list of SDMX sources, dataflows, dimensions, or codes.
 2. Enter an index or ID from the list to select it.
 3. If you want to select something else, enter `back`.
 4. If you're done, enter `quit`. Otherwise return to step 1.
+
+Enter `help` for the full list of commands.
 
 ## Tips
 
