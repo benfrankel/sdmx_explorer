@@ -5,7 +5,9 @@ tool that can download SDMX data from a list of data queries.
 
 ## Usage
 
-Start by writing a **download configuration file**:
+Start by writing a **download configuration file** in [TOML](https://en.wikipedia.org/wiki/TOML) or [YAML](https://en.wikipedia.org/wiki/YAML).
+
+You can use this `example.toml` as a starting point:
 
 ```toml
 # A list of columns to remove.
@@ -30,6 +32,7 @@ queries = [
 ]
 ```
 
-Now run `download example.toml` to begin the download.
+Now run `download example.toml` to begin the download
+(replace `example.toml` with the path to your download configuration file).
 
 You can pass multiple download configuration files to `download` to run all of them.
