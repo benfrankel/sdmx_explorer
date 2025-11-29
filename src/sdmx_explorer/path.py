@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, order=True)
 class SdmxPath:
     """A partial SDMX path to a particular view of statistical data."""
 
@@ -56,7 +56,7 @@ class SdmxPath:
         return "/".join(parts)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, order=True)
 class SdmxQuery(SdmxPath):
     """A full SDMX path to a particular view of statistical data."""
 
@@ -76,18 +76,22 @@ BOOKMARKS_PATH: Path = Path(__file__).parent.parent.parent / "bookmarks.txt"
 def load_bookmarks() -> list[SdmxPath]:
     try:
         with open(BOOKMARKS_PATH, "r") as f:
-            return [
-                SdmxPath.from_str(line.strip())
-                for line in f
-                if line and not line.startswith("#")
-            ]
+            return [SdmxPath.from_str(line) for line in f]
     except FileNotFoundError:
         return []
 
 
-def save_bookmark(path: SdmxPath):
-    if path in load_bookmarks():
-        raise ValueError(f"Path already bookmarked: {path}")
+def toggle_bookmark(path: SdmxPath) -> int:
+    bookmarks = load_bookmarks()
+    if path in bookmarks:
+        index = ~bookmarks.index(path)
+        bookmarks.remove(path)
+    else:
+        bookmarks.append(path)
+        bookmarks.sort()
+        index = bookmarks.index(path)
 
-    with open(BOOKMARKS_PATH, "a") as f:
-        f.write(f"{path}\n")
+    with open(BOOKMARKS_PATH, "w") as f:
+        f.writelines(str(path) for path in bookmarks)
+
+    return index

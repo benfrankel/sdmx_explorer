@@ -22,11 +22,11 @@ class SdmxContext:
         if isinstance(source, sdmx.source.Source):
             return source
         elif isinstance(source, str):
-            return sdmx.get_source(source)
+            return sdmx.source.sources[source]
         elif isinstance(source, int):
             if source < 0:
                 raise IndexError("List index is negative")
-            return sdmx.get_source(sdmx.list_sources()[source])
+            return sdmx.source.sources[sdmx.list_sources()[source]]
         else:
             raise TypeError(f"Unexpected type: {type(source)}")
 
@@ -203,7 +203,7 @@ class SdmxContext:
 
     @staticmethod
     def sources():
-        return [sdmx.get_source(x) for x in sdmx.list_sources()]
+        return [sdmx.source.sources[x] for x in sdmx.list_sources()]
 
     def dataflows(self):
         msg = self.get_dataflow()

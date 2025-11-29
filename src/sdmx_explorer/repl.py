@@ -8,7 +8,7 @@ import logging
 
 from .context import SdmxContext, SdmxContextError
 from .display import CONSOLE
-from .path import BOOKMARKS_PATH, save_bookmark
+from .path import BOOKMARKS_PATH, load_bookmarks, toggle_bookmark
 
 
 log = logging.getLogger(__name__)
@@ -84,10 +84,19 @@ class SdmxRepl:
             # TODO: Add this command when SDMX 3.0 is better-supported.
             # case "preview" | "p":
             #     self.do_preview()
-            case "save" | "s":
-                self.do_save()
+            case ":":
+                self.do_bookmark_toggle()
             case _:
-                self.do_select(command)
+                if command.startswith(":"):
+                    key = command[1:]
+                    try:
+                        key = int(key)
+                    except ValueError:
+                        self.do_bookmark_list()
+                    else:
+                        self.do_bookmark_select(key)
+                else:
+                    self.do_select(command)
 
     def do_help(self):
         child, children = self._child_resource_str()
@@ -135,6 +144,10 @@ class SdmxRepl:
             f"List {children} [dim](aliases: ls)[/]",
         )
         table.add_row(
+            "<INDEX>, <ID>",
+            f"Select a {child} by its index or its ID",
+        )
+        table.add_row(
             "info, i",
             "Show information on the current path",
         )
@@ -143,8 +156,16 @@ class SdmxRepl:
         #    "Preview data at the current query",
         # )
         table.add_row(
-            "save, s",
-            "Save the current path as a bookmark",
+            ":list, :l",
+            "List bookmarked paths",
+        )
+        table.add_row(
+            ":",
+            "Add or remove the current path as a bookmark",
+        )
+        table.add_row(
+            ":<INDEX>",
+            "Select a bookmarked path by its index",
         )
 
         # Display table.
@@ -313,7 +334,7 @@ class SdmxRepl:
 
         # Populate table.
         for idx, source_id in enumerate(sdmx.list_sources()):
-            source = sdmx.get_source(source_id)
+            source = sdmx.source.sources[source_id]
             table.add_row(
                 str(idx),
                 escape(source_id),
@@ -452,10 +473,62 @@ class SdmxRepl:
         df = self.ctx.data(limit=10)
         self.console.print(df)
 
-    def do_save(self):
+    def do_bookmark_toggle(self):
+        if self.ctx.client.source is NoSource:
+            self._print_error("Cannot bookmark an empty path")
+            return
+
         path = self.ctx.path()
-        save_bookmark(path)
-        self.console.print(f"Saved {path.to_str(rich=True)} to {BOOKMARKS_PATH}")
+        index = toggle_bookmark(path)
+        if index < 0:
+            self.console.print(
+                f"Removed {path.to_str(rich=True)} from bookmark {~index} in {escape(repr(str(BOOKMARKS_PATH)))}",
+                highlight=True,
+            )
+        else:
+            self.console.print(
+                f"Added {path.to_str(rich=True)} as bookmark {index} in {escape(repr(str(BOOKMARKS_PATH)))}",
+                highlight=True,
+            )
+
+    def do_bookmark_list(self):
+        # Define table.
+        table = Table(
+            show_edge=True,
+            show_lines=True,
+        )
+        table.add_column(
+            header="#",
+            style="index",
+            justify="right",
+        )
+        table.add_column(
+            header="Path",
+            overflow="fold",
+        )
+
+        # Populate table.
+        bookmarks = load_bookmarks()
+        for idx, path in enumerate(bookmarks):
+            table.add_row(
+                str(idx),
+                path.to_str(rich=True),
+            )
+
+        # Display table.
+        self._print_table(table, empty="No bookmarks")
+
+    def do_bookmark_select(self, index: int):
+        bookmarks = load_bookmarks()
+        try:
+            path = bookmarks[index]
+        except IndexError:
+            self._print_error(
+                f"No bookmark found at index {index} (should be in range 0-{len(bookmarks) - 1})"
+            )
+            return
+
+        self.do_select(f"/{path}")
 
     def do_select(self, key):
         absolute = False
@@ -634,9 +707,9 @@ class SdmxRepl:
     def _print_error(self, msg):
         self.console.print(f"[error]Error:[/] {msg}", highlight=True)
 
-    def _print_table(self, table):
+    def _print_table(self, table, empty="No results found"):
         if table.row_count == 0:
-            self.console.print("No results found")
+            self.console.print(empty)
         elif table.row_count <= self.max_unpaged_rows:
             self.console.print(table)
         else:
