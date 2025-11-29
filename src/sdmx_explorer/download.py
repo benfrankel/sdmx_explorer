@@ -228,6 +228,9 @@ class DownloadConfig:
                     )
                     continue
 
+                # Drop empty observations.
+                df = df.dropna(subset="value")
+
                 # Cache the query result.
                 if self.use_cache:
                     save_as(df, cache_path(query))
