@@ -116,7 +116,7 @@ class DownloadConfig:
         ".tsv",
         ".csv",
         ".xlsx",
-        "xls",
+        ".xls",
         ".html",
         ".json",
         ".parquet",
@@ -304,6 +304,7 @@ def pivot(df: pd.DataFrame) -> pd.DataFrame:
             index=set(df.columns).difference([TIME, VALUE]),
             columns=TIME,
             values=VALUE,
+            # aggfunc='mean',
         )
         .reset_index()
         .replace(NAN_MARKER, np.nan)

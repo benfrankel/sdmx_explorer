@@ -144,12 +144,12 @@ class SdmxRepl:
             f"List {children} [dim](aliases: ls)[/]",
         )
         table.add_row(
-            "<INDEX>, <ID>",
-            f"Select a {child} by its index or its ID",
-        )
-        table.add_row(
             "info, i",
             "Show information on the current path",
+        )
+        table.add_row(
+            "<INDEX>, <ID>",
+            f"Select a {child} by its index or its ID",
         )
         # table.add_row(
         #    "preview, p",
