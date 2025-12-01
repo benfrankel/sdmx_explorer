@@ -25,7 +25,7 @@ Enter `help` for the full list of commands.
 ## Tips
 
 - **Shortcuts:**
-    - Every command has a one-letter shortcut for convenience. You can type `l` instead of `list`, or `b` instead of `back`, and so on.
+    - Every command has a one-letter shortcut for convenience (e.g. `l` instead of `list`).
     - Use Ctrl-C to cancel a command that's taking too long or reset your input text.
     - Use Ctrl-D with no input text to go `back`.
 - **Advanced selection:**

@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 import tomllib
 
-from . import auth
 from .context import SdmxContext
 from .display import CONSOLE
 from .path import SdmxQuery
@@ -64,7 +63,7 @@ def _main():
         )
 
     try:
-        ctx = SdmxContext(client=auth.client(), console=console)
+        ctx = SdmxContext(client=sdmx.Client(), console=console)
         configs = [(path, DownloadConfig.load(path)) for path in args.paths]
 
         seen = set()
@@ -180,7 +179,7 @@ class DownloadConfig:
 
     def download(self, ctx=None, verbose=False):
         if ctx is None:
-            ctx = SdmxContext(client=auth.client(), console=CONSOLE)
+            ctx = SdmxContext(client=sdmx.Client(), console=CONSOLE)
 
         download = []
         for query in self.queries:
