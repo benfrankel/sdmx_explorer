@@ -22,6 +22,9 @@ pivot_table = false
 # If true, the result of each data query will be saved to disk.
 # Default: true
 use_cache = true
+# The number of times failed queries will be retried (e.g. if the connection times out).
+# Default: 4
+max_retries = 4
 # The file path where the download should be saved.
 # Supported file extensions: .tsv, .csv, .xlsx, .xls, .html, .json, .parquet, .feather, .pkl, .pickle, .tex, .dta.
 output_path = "example.tsv"

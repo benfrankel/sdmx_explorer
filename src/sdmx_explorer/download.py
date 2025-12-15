@@ -7,6 +7,8 @@ import yaml
 import argparse
 from dataclasses import dataclass, field
 from pathlib import Path
+import random
+import time
 import tomllib
 
 from .context import SdmxContext
@@ -101,6 +103,7 @@ class DownloadConfig:
     drop_attributes: bool = False
     pivot_table: bool = False
     use_cache: bool = True
+    max_retries: int = 4
 
     REQUIRED_FIELDS = ["output_path", "queries"]
     EXPECTED_FIELDS = {
@@ -110,6 +113,7 @@ class DownloadConfig:
         "drop_attributes": bool,
         "pivot_table": bool,
         "use_cache": bool,
+        "max_retries": int,
     }
     SUPPORTED_TABLE_EXTENSIONS = {
         ".tsv",
@@ -128,6 +132,7 @@ class DownloadConfig:
 
     @classmethod
     def load(cls, path: Path) -> "DownloadConfig":
+        # Load file.
         match path.suffix:
             case ".toml":
                 with open(path) as f:
@@ -140,6 +145,7 @@ class DownloadConfig:
                     f"Download configuration file {str(path)!r} uses an unsupported file extension: {path.suffix!r} (should be '.toml' or '.yaml')"
                 )
 
+        # Verify key names and types.
         for key in cls.REQUIRED_FIELDS:
             if key not in data:
                 raise TypeError(
@@ -148,7 +154,7 @@ class DownloadConfig:
         for key, value in data.items():
             if key not in cls.EXPECTED_FIELDS:
                 raise TypeError(
-                    f"Download configuration file {str(path)!r} has an unexpected field: {key!r}"
+                    f"Download configuration file {str(path)!r} contains an unexpected field: {key!r}"
                 )
             expected_type = cls.EXPECTED_FIELDS[key]
             if not isinstance(value, expected_type):
@@ -156,6 +162,7 @@ class DownloadConfig:
                     f"Download configuration file {str(path)!r} field {key!r} has the wrong type: {type(value).__name__!r} (should be {expected_type.__name__!r})"
                 )
 
+        # Parse string values.
         data["output_path"] = path.parent / data["output_path"]
         if data["output_path"].suffix not in cls.SUPPORTED_TABLE_EXTENSIONS:
             raise TypeError(
@@ -183,8 +190,8 @@ class DownloadConfig:
 
         download = []
         for query in self.queries:
+            query_str = query.to_str(rich=True)
             try:
-                query_str = query.to_str(rich=True)
                 with ctx.console.status(f"{query_str}"):
                     try:
                         ctx.select_source(query.source)
@@ -219,7 +226,22 @@ class DownloadConfig:
                         )
                         continue
 
-                    df: pd.DataFrame = ctx.data()
+                    delay = 0.5
+                    max_delay = 4
+                    attempts = max(self.max_retries, 0) + 1
+                    for attempt in range(attempts):
+                        try:
+                            df: pd.DataFrame = ctx.data()
+                            break
+                        except Exception as err:
+                            if attempt + 1 == attempts:
+                                raise
+                            ctx.console.print(
+                                f"[warning]Warning:[/] {escape(repr(err))} while requesting {query_str} (attempt {attempt + 1}/{attempts})",
+                                highlight=True,
+                            )
+                            time.sleep(random.uniform(0, delay))
+                            delay = min(2 * delay, max_delay)
 
                 if df is None:
                     ctx.console.print(
@@ -252,13 +274,13 @@ class DownloadConfig:
                 # Add query result to download.
                 download.append(df)
             except Exception as err:
+                attempts = max(self.max_retries, 0) + 1
+                ctx.console.print(
+                    f"[error]Error:[/] {escape(repr(err))} while requesting {query_str} (attempt {attempts}/{attempts})",
+                    highlight=True,
+                )
                 if verbose:
                     ctx.console.print_exception(show_locals=True)
-                else:
-                    ctx.console.print(
-                        f"[error]Error:[/] {escape(repr(err))} while requesting {query_str}",
-                        highlight=True,
-                    )
 
         # Save the combined download to the output path.
         if download:
