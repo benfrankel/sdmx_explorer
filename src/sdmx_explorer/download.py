@@ -346,7 +346,9 @@ def save_as(df: pd.DataFrame, path: Path):
 def cache_path(query: SdmxQuery) -> Path:
     """Get the file path where an SDMX query should be cached."""
     CACHE_DIR: Path = Path(__file__).parent.parent.parent / "cache"
-    return CACHE_DIR / query.source / query.dataflow / f"{query.key}.tsv"
+    # Asterisk is an invalid character for file paths on Windows.
+    key = query.key.replace("*", "(ALL)")
+    return CACHE_DIR / query.source / query.dataflow / f"{key}.tsv"
 
 
 def duplicates(items):
